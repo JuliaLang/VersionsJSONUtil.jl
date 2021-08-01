@@ -1,0 +1,33 @@
+name: Deploy JSON schema
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "schema.json"
+      - ".github/workflows/deploy-schema.yml"
+    branches:
+      - "main"
+
+env:
+  aws_region: us-east-1
+  s3_bucket: julialang2
+
+jobs:
+  deploy-schema:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@a81bbbf8298c0fa03ea29cdc473d45769f953675 # 2.3.3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@32d908adfb55576ba0c59f3c557058e80b5194c3 # 1.5.3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.aws_region }}
+
+      - name: Upload schema.json as versions-schema.json to s3
+        run: aws s3 cp schema.json s3://${{ env.s3_bucket }}/bin/versions-schema.json --acl public-read --no-progress
+
+      - name: Purge cache
+        run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions-schema.json
