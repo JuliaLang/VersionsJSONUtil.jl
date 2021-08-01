@@ -106,8 +106,8 @@ jobs:
         uses: actions/download-artifact@3be87be14a055c47b01d3bd88f8fe02320a9bb60
         with:
           name: versions
-
-      - run: unzip versions.zip
+      
+      - run: ls -la
 
       - run: cat versions.json
       # - name: Configure AWS credentials
