@@ -87,15 +87,3 @@ jobs:
           name: versions
           path: versions.json
           if-no-files-found: error
-
-      - name: Save PR number
-        if: github.event_name == 'pull_request'
-        run: |
-          mkdir -p ./pr
-          echo ${{ github.event.number }} > ./pr/NR
-
-      - uses: actions/upload-artifact@27121b0bdffd731efa15d66772be8dc71245d074
-        if: github.event_name == 'pull_request'
-        with:
-          name: pr
-          path: pr/
