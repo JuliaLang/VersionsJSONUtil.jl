@@ -78,7 +78,7 @@ julia_platforms = [
     Linux(:powerpc64le),
     Linux(:x86_64, libc = :musl),
     MacOS(:x86_64),
-    # MacOS(:aarch64),
+    MacOS(:aarch64),
     Windows(:x86_64),
     Windows(:i686),
     PortableWindows(:x86_64),
