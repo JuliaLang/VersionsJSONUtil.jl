@@ -7,6 +7,10 @@ on:
       - main
   pull_request:
 
+env:
+  aws_region: us-east-1
+  s3_bucket: julialang2
+
 jobs:
   package-tests:
     name: Package tests - Julia ${{ matrix.version }}
@@ -81,9 +85,40 @@ jobs:
           VersionsJSONUtil.main("versions.json")
         shell: julia --project {0}
 
+      - name: Validate versions.json against schema
+        run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
+
       - name: Upload versions.json as workflow artifact
         uses: actions/upload-artifact@27121b0bdffd731efa15d66772be8dc71245d074
         with:
           name: versions
           path: versions.json
           if-no-files-found: error
+
+  upload-to-s3:
+    needs: [package-test, full-test]
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download versions.json from previous job
+        uses: actions/download-artifact@3be87be14a055c47b01d3bd88f8fe02320a9bb60
+        with:
+          name: versions
+
+      - run: unzip versions.zip
+
+      - run: cat versions.json
+
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@0d9a5be0dceea74e09396820e1e522ba4a110d2f
+      #   with:
+      #     aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
+      #     aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
+      #     aws-region: ${{ env.aws_region }}
+
+      # - name: Upload versions.json to S3
+      #   run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
+
+      # - name: Purge cache
+      #   run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions.json
