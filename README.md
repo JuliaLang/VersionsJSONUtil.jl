@@ -28,7 +28,7 @@ Replace `USERNAME` with your GitHub username, and `PERSONAL_ACCESS_TOKEN` with a
 
 **Note that it is not possible to restrict personal access tokens to individual repos.**
 **The token will have access to all repositories your GH account has access to.**
-**Consider using a [machine user](https://docs.github.com/en/developers/overview/managing-deploy-keys#machine-users) solely for this purpose.**
+**Consider using a [machine user](https://docs.github.com/en/developers/overview/managing-deploy-keys#machine-users) solely created for this purpose.**
 
 For more info, check the [GitHub Docs](https://docs.github.com/en/rest/reference/actions#create-a-workflow-dispatch-event).
 
