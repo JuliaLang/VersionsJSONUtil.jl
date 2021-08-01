@@ -33,3 +33,60 @@ Replace `USERNAME` with your GitHub username, and `PERSONAL_ACCESS_TOKEN` with a
 For more info, check the [GitHub Docs](https://docs.github.com/en/rest/reference/actions#create-a-workflow-dispatch-event).
 
 ## Adding a new platform
+
+1. Add the version that introduces the platform to the `download_urls` dictionary in [`test/runtests.jl`](test/runtests.jl).
+2. Add the platform the `julia_platforms` in [`src/VersionsJSONUtil.jl`](src/VersionsJSONUtil.jl).
+3. Add any missing methods such as `tar_os` until all tests for the new platform pass.
+
+### Example
+
+For an example, adding the M1 MacOS binaries takes the following additions:
+
+#### `test/runtests.jl`
+
+```julia
+const download_urls = Dict(
+    v"1.7.0-beta3" => Dict(
+        MacOS(:aarch64) =>              "https://julialang-s3.julialang.org/bin/mac/aarch64/1.7/julia-1.7.0-beta3-macaarch64.dmg",
+    ),
+    ...
+)
+```
+
+#### `src/VersionsJSONUtil.jl`
+
+```julia
+julia_platforms = [
+    ...
+    MacOS(:aarch64),
+    ...
+]
+```
+
+and changing `tar_os(p::MacOS)` from
+
+```julia
+tar_os(p::MacOS) = "mac$(wordsize(p))"
+```
+
+to
+
+```julia
+function tar_os(p::MacOS)
+    if arch(p) == :aarch64
+        return "macaarch$(wordsize(p))"
+    else
+        return "mac$(wordsize(p))"
+    end
+end
+```
+
+## JSON Schema
+
+[`schema.json`](schema.json) contains a [JSON Schema](https://json-schema.org/) for the `versions.json` file.
+
+It can be used to validate the versions file or to [generate code](https://json-schema.org/implementations.html) from the schema.
+
+## Third Party Notice
+
+The [schema](schema.json) was generated with [quicktype.io](https://app.quicktype.io/#l=schema).
