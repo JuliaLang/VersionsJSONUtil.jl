@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths-ignore:
-      - README.md
+      - "README.md"
   pull_request:
 
 env:
@@ -110,16 +110,13 @@ jobs:
       - run: unzip versions.zip
 
       - run: cat versions.json
-
       # - name: Configure AWS credentials
       #   uses: aws-actions/configure-aws-credentials@0d9a5be0dceea74e09396820e1e522ba4a110d2f
       #   with:
       #     aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
       #     aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
       #     aws-region: ${{ env.aws_region }}
-
       # - name: Upload versions.json to S3
       #   run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
-
       # - name: Purge cache
       #   run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions.json
