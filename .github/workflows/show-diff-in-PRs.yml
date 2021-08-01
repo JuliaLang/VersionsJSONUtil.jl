@@ -1,0 +1,80 @@
+name: Post versions.json diff as PR comment
+
+# Based on https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+
+    steps:
+      - name: Download PR number artifact
+        uses: actions/github-script@a3e7071a34d7e1f219a8a4de9a5e0a34d1ee1293
+        with:
+          script: |
+            var artifacts = await github.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: ${{github.event.workflow_run.id }},
+            });
+            var matchArtifact = artifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "pr"
+            })[0];
+            var download = await github.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            var fs = require('fs');
+            fs.writeFileSync('${{github.workspace}}/pr.zip', Buffer.from(download.data));
+
+      - run: unzip pr.zip
+
+      - name: Download versions artifact
+        uses: actions/github-script@a3e7071a34d7e1f219a8a4de9a5e0a34d1ee1293
+        with:
+          script: |
+            var artifacts = await github.actions.listWorkflowRunArtifacts({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               run_id: ${{github.event.workflow_run.id }},
+            });
+            var matchArtifact = artifacts.data.artifacts.filter((artifact) => {
+              return artifact.name == "versions"
+            })[0];
+            var download = await github.actions.downloadArtifact({
+               owner: context.repo.owner,
+               repo: context.repo.repo,
+               artifact_id: matchArtifact.id,
+               archive_format: 'zip',
+            });
+            var fs = require('fs');
+            fs.writeFileSync('${{github.workspace}}/versions.zip', Buffer.from(download.data));
+
+      - run: unzip versions.zip
+
+      - name: Create diff of current and generated versions.json
+        run: |
+          curl -o versions.current.json https://julialang-s3.julialang.org/bin/versions.json
+          diff versions.current.json versions.json > versions.diff
+
+      - name: Comment on PR
+        uses: actions/github-script@a3e7071a34d7e1f219a8a4de9a5e0a34d1ee1293
+        with:
+          script: |
+            var fs = require('fs');
+            var issue_number = Number(fs.readFileSync('./NR'));
+            var diff = Number(fs.readFileSync('./versions.diff'));
+            await github.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue_number,
+              body: `\`\`\`diff\n${diff}\n\`\`\``
+            });

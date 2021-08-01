@@ -1,34 +1,31 @@
 name: CI
 
-permissions:
-  contents: read
-
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
   pull_request:
 
 jobs:
-  test:
-    name: Julia ${{ matrix.version }} - ${{ matrix.os }} - ${{ matrix.arch }} - ${{ github.event_name }}
+  package-tests:
+    name: Package tests - Julia ${{ matrix.version }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         version:
-          - '1.6'
-          - 'nightly'
+          - "1.6"
+          - "nightly"
         os:
           - ubuntu-latest
-        arch:
-          - x64
     steps:
       - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
+
       - uses: julia-actions/setup-julia@0b9b1d2cd24245f151902702d8e73b3f6b910014
         with:
           version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
+
       - uses: actions/cache@c64c572235d810460d0d6876e9c705ad5002b353
         env:
           cache-name: cache-artifacts
@@ -39,5 +36,66 @@ jobs:
             ${{ runner.os }}-test-${{ env.cache-name }}-
             ${{ runner.os }}-test-
             ${{ runner.os }}-
-      - run: julia --project -e "using Pkg; Pkg.instantiate()"
+
+      - name: Install dependencies
+        run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
+
       - uses: julia-actions/julia-runtest@eda4346d69c0d1653e483c397a83c7f32f4ef2ac
+
+  full-test:
+    name: Full test - Julia ${{ matrix.version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - "1.6"
+        os:
+          - ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
+
+      - uses: julia-actions/setup-julia@0b9b1d2cd24245f151902702d8e73b3f6b910014
+        with:
+          version: ${{ matrix.version }}
+
+      - uses: actions/cache@c64c572235d810460d0d6876e9c705ad5002b353
+        env:
+          cache-name: cache-artifacts
+        with:
+          path: ~/.julia/artifacts
+          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-test-${{ env.cache-name }}-
+            ${{ runner.os }}-test-
+            ${{ runner.os }}-
+
+      - name: Install dependencies
+        run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
+
+      - name: Build versions.json
+        run: |
+          using VersionsJSONUtil
+
+          VersionsJSONUtil.main("versions.json")
+        shell: julia --project {0}
+
+      - name: Upload versions.json as workflow artifact
+        uses: actions/upload-artifact@27121b0bdffd731efa15d66772be8dc71245d074
+        with:
+          name: versions
+          path: versions.json
+          if-no-files-found: error
+
+      - name: Save PR number
+        if: github.event_name == 'pull_request'
+        run: |
+          mkdir -p ./pr
+          echo ${{ github.event.number }} > ./pr/NR
+
+      - uses: actions/upload-artifact@27121b0bdffd731efa15d66772be8dc71245d074
+        if: github.event_name == 'pull_request'
+        with:
+          name: pr
+          path: pr/
