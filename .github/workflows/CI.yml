@@ -96,7 +96,7 @@ jobs:
           if-no-files-found: error
 
   upload-to-s3:
-    needs: [package-test, full-test]
+    needs: [package-tests, full-test]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
