@@ -16,7 +16,7 @@ up_os(p::Linux) = libc(p) == :glibc ? "linux" : "musl"
 up_os(p::FreeBSD) = "freebsd"
 up_os(p) = error("Unknown OS for $(p)")
 
-up_arch(p#=::Platform=#) = up_arch(arch(p))
+up_arch(p) = up_arch(arch(p))
 function up_arch(arch::Symbol)
     if arch == :x86_64
         return "x64"
@@ -49,15 +49,15 @@ end
 jlext(p::Windows) = "exe"
 jlext(p::PortableWindows) = "zip"
 jlext(p::MacOS) = "dmg"
-jlext(p#=::Platform=#) = "tar.gz"
+jlext(p) = "tar.gz"
 
 # OS to use in the metadata
 # The OS in the download URL for Linux with musl is "musl"
 # But the OS in the metadata should be "linux"
-meta_os(p#=::Platform=#) = up_os(p)
+meta_os(p) = up_os(p)
 meta_os(p::Linux) = "linux"
 
-function download_url(version::VersionNumber, platform#=::Platform=#)
+function download_url(version::VersionNumber, platform)
     return string(
         "https://julialang-s3.julialang.org/bin/",
         up_os(platform), "/",
@@ -78,7 +78,7 @@ julia_platforms = [
     Linux(:powerpc64le),
     Linux(:x86_64, libc = :musl),
     MacOS(:x86_64),
-    MacOS(:aarch64),
+    # MacOS(:aarch64),
     Windows(:x86_64),
     Windows(:i686),
     PortableWindows(:x86_64),
