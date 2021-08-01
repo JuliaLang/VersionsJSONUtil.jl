@@ -11,7 +11,7 @@ You can either trigger it through the GitHub UI or via an authenticated HTTP req
 
 ### GitHub's UI
 
-TODO
+![grafik](https://user-images.githubusercontent.com/20866761/127783220-fd8167db-5051-4a18-b70a-ea42085a7cb5.png)
 
 ### HTTP request
 
