@@ -4,9 +4,9 @@ import VersionsJSONUtil: PortableWindows
 using Test
 
 const download_urls = Dict(
-    # v"1.7.0-beta3" => Dict(
-    #     MacOS(:aarch64) =>              "https://julialang-s3.julialang.org/bin/mac/aarch64/1.7/julia-1.7.0-beta3-macaarch64.dmg",
-    # ),
+    v"1.7.0-beta3" => Dict(
+        MacOS(:aarch64) =>              "https://julialang-s3.julialang.org/bin/mac/aarch64/1.7/julia-1.7.0-beta3-macaarch64.dmg",
+    ),
     v"1.6.2" => Dict(
         Linux(:x86_64) =>               "https://julialang-s3.julialang.org/bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz",
         Linux(:i686) =>                 "https://julialang-s3.julialang.org/bin/linux/x86/1.6/julia-1.6.2-linux-i686.tar.gz",
