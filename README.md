@@ -1,7 +1,5 @@
 # VersionsJSONUtil
 
-[![CI](https://github.com/JuliaLang/VersionsJSONUtil.jl/actions/workflows/CI.yml/badge.svg)](https://github.com/JuliaLang/VersionsJSONUtil.jl/actions/workflows/CI.yml)
-
 More info: https://github.com/JuliaLang/julia/issues/33817
 
 ## Triggering a rebuild
