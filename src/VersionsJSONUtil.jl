@@ -4,11 +4,18 @@ using HTTP, JSON, Pkg.BinaryPlatforms, WebCacheUtilities, SHA, Lazy
 import Pkg.BinaryPlatforms: triplet, arch
 
 "Wrapper type to define two jlext methods for portable and installer Windows"
-struct PortableWindows
+struct WindowsPortable
     windows::Windows
 end
-PortableWindows(arch::Symbol) = PortableWindows(Windows(arch))
-@forward PortableWindows.windows (up_os, tar_os, triplet, arch)
+WindowsPortable(arch::Symbol) = WindowsPortable(Windows(arch))
+@forward WindowsPortable.windows (up_os, tar_os, triplet, arch)
+
+"Wrapper type to define two jlext methods for macOS DMG and macOS tarball"
+struct MacOSTarball
+    macos::MacOS
+end
+MacOSTarball(arch::Symbol) = MacOSTarball(MacOS(arch))
+@forward MacOSTarball.macos (up_os, tar_os, triplet, arch)
 
 up_os(p::Windows) = "winnt"
 up_os(p::MacOS) = "mac"
@@ -47,7 +54,7 @@ function tar_os(p::Linux)
 end
 
 jlext(p::Windows) = "exe"
-jlext(p::PortableWindows) = "zip"
+jlext(p::WindowsPortable) = "zip"
 jlext(p::MacOS) = "dmg"
 jlext(p) = "tar.gz"
 
@@ -62,7 +69,7 @@ function download_url(version::VersionNumber, platform)
         "https://julialang-s3.julialang.org/bin/",
         up_os(platform), "/",
         up_arch(platform), "/",
-        version.major, ".", version.minor, "/", 
+        version.major, ".", version.minor, "/",
         "julia-", version, "-", tar_os(platform), ".", jlext(platform),
     )
 end
@@ -70,26 +77,42 @@ end
 # We're going to collect the combinatorial explosion of version/os-arch possible downloads.
 # We don't have a nice, neat list of what is or is not available, and so we're just going to
 # try and download each file, and if it exists, yay.  Otherwise, bleh.
-julia_platforms = [
-    Linux(:x86_64),
-    Linux(:i686),
-    Linux(:aarch64),
-    Linux(:armv7l),
-    Linux(:powerpc64le),
-    Linux(:x86_64, libc = :musl),
-    MacOS(:x86_64),
-    MacOS(:aarch64),
-    Windows(:x86_64),
-    Windows(:i686),
-    PortableWindows(:x86_64),
-    PortableWindows(:i686),
-    FreeBSD(:x86_64),
+linux_glibc_arches = [
+    :x86_64,
+    :i686,
+    :aarch64,
+    :armv7l,
+    :powerpc64le,
 ]
+linux_musl_arches = [:x86_64]
+macos_arches = [:x86_64, :aarch64]
+windows_arches = [:x86_64, :i686]
+freebsd_arches = [:x86_64]
+
+julia_platforms = []
+for arch in linux_glibc_arches
+    push!(julia_platforms, Linux(arch; libc = :glibc))
+end
+for arch in linux_musl_arches
+    push!(julia_platforms, Linux(arch; libc = :musl))
+end
+for arch in macos_arches
+    push!(julia_platforms, MacOS(arch))
+    push!(julia_platforms, MacOSTarball(arch))
+end
+for arch in windows_arches
+    push!(julia_platforms, Windows(arch))
+    push!(julia_platforms, WindowsPortable(arch))
+end
+for arch in freebsd_arches
+    push!(julia_platforms, FreeBSD(arch))
+end
 
 function vnum_maybe(x::AbstractString)
     try
         return VersionNumber(x)
-    catch
+    catch ex
+        @info "Ignoring the following exception" x exception=ex
         return nothing
     end
 end
@@ -113,22 +136,28 @@ function main(out_path)
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
 
     meta = Dict()
+    number_urls_tried = 0
+    number_urls_success = 0
     for version in tag_versions
         for platform in julia_platforms
             url = download_url(version, platform)
             filename = basename(url)
 
             # Download this URL to a local file
+            number_urls_tried += 1
             local filepath
             try
-                @info("Downloading $(filename)...")
+                print(stdout, "Downloading $(filename)...")
                 filepath = WebCacheUtilities.download_to_cache(filename, url)
-            catch e
-                if isa(e, InterruptException)
-                    rethrow(e)
+            catch ex
+                if isa(ex, InterruptException)
+                    rethrow(ex)
                 end
+                println(stdout, " ✗")
                 continue
             end
+            number_urls_success += 1
+            println(stdout, " ✓")
 
             tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
                 open(filepath, "r") do io
@@ -150,32 +179,47 @@ function main(out_path)
             # Test to see if there is an asc signature:
             asc_signature = nothing
             if !isa(platform, MacOS) && !isa(platform, Windows)
+                asc_url = string(url, ".asc")
+                print(stdout, "    Downloading $(basename(asc_url))")
                 try
-                    asc_url = string(url, ".asc")
-                    @info("Downloading $(basename(asc_url))")
                     asc_filepath = WebCacheUtilities.download_to_cache(basename(asc_url), asc_url)
                     asc_signature = String(read(asc_filepath))
-                catch e
-                    if isa(e, InterruptException)
-                        rethrow(e)
+                    println(stdout, " ✓")
+                catch ex
+                    if isa(ex, InterruptException)
+                        rethrow(ex)
                     end
+                    println(stdout, " ✗")
                 end
+
             end
 
             # Build up metadata about this file
-            kind = "archive"
-            if endswith(filename, ".exe")
+            if endswith(filename, ".dmg")
+                kind = "archive"
+                extension = "dmg"
+            elseif endswith(filename, ".exe")
                 kind = "installer"
+                extension = "exe"
+            elseif endswith(filename, ".tar.gz")
+                kind = "archive"
+                extension = "tar.gz"
+            elseif endswith(filename, ".zip")
+                kind = "archive"
+                extension = "zip"
+            else
+                error("Unsupported file extension in filename: $(filename)")
             end
             file_dict = Dict(
-                "triplet" => triplet(platform),
-                "os" => meta_os(platform),
                 "arch" => string(arch(platform)),
-                "version" => string(version),
+                "extension" => extension,
+                "kind" => kind,
+                "os" => meta_os(platform),
                 "sha256" => tarball_hash,
                 "size" => filesize(filepath),
-                "kind" => kind,
+                "triplet" => triplet(platform),
                 "url" => url,
+                "version" => string(version),
             )
             # Add in `.asc` signature content, if applicable
             if asc_signature !== nothing
@@ -195,6 +239,7 @@ function main(out_path)
             rm(filepath)
         end
     end
+    @info "Tried $(number_urls_tried) versions, successfully downloaded $(number_urls_success)"
 end
 
 end # module
