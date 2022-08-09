@@ -9,6 +9,15 @@ on:
       - "README.md"
   pull_request:
 
+concurrency:
+  # Skip intermediate builds: all builds except for builds on the `master` branch
+  # Cancel intermediate builds: only pull request builds
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref != 'refs/heads/main' || github.run_number }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+permissions:
+  contents: read
+
 env:
   aws_region: us-east-1
   s3_bucket: julialang2
@@ -17,6 +26,7 @@ jobs:
   package-tests:
     name: Package tests - Julia ${{ matrix.version }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +60,7 @@ jobs:
   full-test:
     name: Full test - Julia ${{ matrix.version }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -78,6 +89,8 @@ jobs:
 
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
+        
+      - run: rm -f versions.json
 
       - name: Build versions.json
         run: |
@@ -100,6 +113,7 @@ jobs:
     needs: [package-tests, full-test]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Download versions.json from previous job
