@@ -9,6 +9,15 @@ on:
     branches:
       - "main"
 
+concurrency:
+  # Skip intermediate builds: all builds except for builds on the `master` branch
+  # Cancel intermediate builds: only pull request builds
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref != 'refs/heads/main' || github.run_number }}
+  cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
+
+permissions:
+  contents: read
+
 env:
   aws_region: us-east-1
   s3_bucket: julialang2
@@ -16,6 +25,7 @@ env:
 jobs:
   deploy-schema:
     runs-on: ubuntu-20.04
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@a81bbbf8298c0fa03ea29cdc473d45769f953675 # 2.3.3
 
