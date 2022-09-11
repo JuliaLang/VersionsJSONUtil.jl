@@ -1,6 +1,6 @@
 using Pkg.BinaryPlatforms, JSON
 using VersionsJSONUtil
-import VersionsJSONUtil: WindowsPortable, MacOSTarball
+import VersionsJSONUtil: WindowsPortable, WindowsTarball, MacOSTarball
 using Test
 
 const download_urls = Dict(
@@ -20,6 +20,8 @@ const download_urls = Dict(
         Windows(:i686) =>               "https://julialang-s3.julialang.org/bin/winnt/x86/1.6/julia-1.6.2-win32.exe",
         WindowsPortable(:x86_64) =>     "https://julialang-s3.julialang.org/bin/winnt/x64/1.6/julia-1.6.2-win64.zip",
         WindowsPortable(:i686) =>       "https://julialang-s3.julialang.org/bin/winnt/x86/1.6/julia-1.6.2-win32.zip",
+        WindowsTarball(:x86_64) =>      "https://julialang-s3.julialang.org/bin/winnt/x64/1.6/julia-1.6.2-win64.tar.gz",
+        WindowsTarball(:i686) =>        "https://julialang-s3.julialang.org/bin/winnt/x86/1.6/julia-1.6.2-win32.tar.gz",
         FreeBSD(:x86_64) =>             "https://julialang-s3.julialang.org/bin/freebsd/x64/1.6/julia-1.6.2-freebsd-x86_64.tar.gz",
     ),
 )
