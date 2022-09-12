@@ -85,6 +85,14 @@ end
 
 It can be used to validate the versions file or to [generate code](https://json-schema.org/implementations.html) from the schema.
 
+## Tools using version.json
+
+This is an (incomplete) list of tools that make use of the published `versions.json`.
+If you maintain such a tool, consider adding info about it in this list.
+This allows us to verify if changes might affect downstream tooling.
+
+- [julia-actions/setup-julia](https://github.com/julia-actions/setup-julia)
+
 ## Third Party Notice
 
 The [schema](schema.json) was generated with [quicktype.io](https://app.quicktype.io/#l=schema).
