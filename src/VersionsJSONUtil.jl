@@ -3,12 +3,18 @@ module VersionsJSONUtil
 using HTTP, JSON, Pkg.BinaryPlatforms, WebCacheUtilities, SHA, Lazy
 import Pkg.BinaryPlatforms: triplet, arch
 
-"Wrapper type to define two jlext methods for portable and installer Windows"
+"Wrapper types to define three jlext methods for portable, tarball and installer Windows"
 struct WindowsPortable
     windows::Windows
 end
 WindowsPortable(arch::Symbol) = WindowsPortable(Windows(arch))
 @forward WindowsPortable.windows (up_os, tar_os, triplet, arch)
+
+struct WindowsTarball
+    windows::Windows
+end
+WindowsTarball(arch::Symbol) = WindowsTarball(Windows(arch))
+@forward WindowsTarball.windows (up_os, tar_os, triplet, arch)
 
 "Wrapper type to define two jlext methods for macOS DMG and macOS tarball"
 struct MacOSTarball
@@ -55,6 +61,7 @@ end
 
 jlext(p::Windows) = "exe"
 jlext(p::WindowsPortable) = "zip"
+jlext(p::WindowsTarball) = "tar.gz"
 jlext(p::MacOS) = "dmg"
 jlext(p) = "tar.gz"
 
@@ -96,6 +103,8 @@ julia_platforms = [
     Windows(:i686),
     WindowsPortable(:x86_64),
     WindowsPortable(:i686),
+    WindowsTarball(:x86_64),
+    WindowsTarball(:i686),
     # *-unknown-freebsd
     FreeBSD(:x86_64),
 ]
