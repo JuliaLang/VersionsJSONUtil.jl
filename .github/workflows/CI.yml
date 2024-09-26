@@ -65,7 +65,10 @@ jobs:
       - uses: julia-actions/julia-buildpkg@v1
       - run: rm -f versions.json
       - name: Build versions.json
-        run: julia --project=. 'using VersionJSONUtil; VersionsJSONUtil.main("versions.json")'
+        run: |
+          using VersionsJSONUtil
+          VersionsJSONUtil.main("versions.json")
+        shell: julia --project {0}
       - name: Validate versions.json against schema
         run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
       - name: Upload versions.json as workflow artifact
