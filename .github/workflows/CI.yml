@@ -35,7 +35,7 @@ jobs:
         os:
           - ubuntu-latest
     steps:
-      - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
+      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938
 
       - uses: julia-actions/setup-julia@0b9b1d2cd24245f151902702d8e73b3f6b910014
         with:
@@ -70,7 +70,7 @@ jobs:
           - ubuntu-latest
 
     steps:
-      - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
+      - uses: actions/checkout@d632683dd7b4114ad314bca15554477dd762a938
 
       - uses: julia-actions/setup-julia@0b9b1d2cd24245f151902702d8e73b3f6b910014
         with:
