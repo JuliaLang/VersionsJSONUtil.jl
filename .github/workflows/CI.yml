@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
 
-      - uses: julia-actions/setup-julia@0b9b1d2cd24245f151902702d8e73b3f6b910014
+      - uses: julia-actions/setup-julia@a0a0978e28861c11a3490cee468f87d5b568851a
         with:
           version: ${{ matrix.version }}
 
@@ -72,7 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
 
-      - uses: julia-actions/setup-julia@0b9b1d2cd24245f151902702d8e73b3f6b910014
+      - uses: julia-actions/setup-julia@a0a0978e28861c11a3490cee468f87d5b568851a
         with:
           version: ${{ matrix.version }}
 
