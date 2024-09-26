@@ -16,6 +16,8 @@ concurrency:
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
 permissions:
+  # Needed for `julia-actions/cache` to clear old caches
+  actions: write
   contents: read
 
 env:
@@ -35,27 +37,13 @@ jobs:
         os:
           - ubuntu-latest
     steps:
-      - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
-
-      - uses: julia-actions/setup-julia@0b9b1d2cd24245f151902702d8e73b3f6b910014
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-
-      - uses: actions/cache@c64c572235d810460d0d6876e9c705ad5002b353
-        env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
-
-      - name: Install dependencies
-        run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
-
-      - uses: julia-actions/julia-runtest@eda4346d69c0d1653e483c397a83c7f32f4ef2ac
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
 
   full-test:
     name: Full test - Julia ${{ matrix.version }}
@@ -68,46 +56,25 @@ jobs:
           - "1.6"
         os:
           - ubuntu-latest
-
     steps:
-      - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
-
-      - uses: julia-actions/setup-julia@0b9b1d2cd24245f151902702d8e73b3f6b910014
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-
-      - uses: actions/cache@c64c572235d810460d0d6876e9c705ad5002b353
-        env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
-
-      - name: Install dependencies
-        run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
-        
+      - uses: julia-actions/cache@v2
+      - uses: julia-actions/julia-buildpkg@v1
       - run: rm -f versions.json
-
       - name: Build versions.json
-        run: |
-          using VersionsJSONUtil
-
-          VersionsJSONUtil.main("versions.json")
-        shell: julia --project {0}
-
+        run: julia --project=. 'using VersionJSONUtil; VersionsJSONUtil.main("versions.json")'
       - name: Validate versions.json against schema
         run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
-
       - name: Upload versions.json as workflow artifact
-        uses: actions/upload-artifact@c24449f33cd45d4826c6702db7e49f7cdb9b551d
+        uses: actions/upload-artifact@v4
         with:
           name: versions
           path: versions.json
           if-no-files-found: error
+          overwrite: true
 
   upload-to-s3:
     needs: [package-tests, full-test]
@@ -117,12 +84,12 @@ jobs:
 
     steps:
       - name: Download versions.json from previous job
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        uses: actions/download-artifact@v4
         with:
           name: versions
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@0d9a5be0dceea74e09396820e1e522ba4a110d2f
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
