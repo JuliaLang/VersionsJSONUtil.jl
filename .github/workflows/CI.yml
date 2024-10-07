@@ -8,6 +8,7 @@ on:
     paths-ignore:
       - "README.md"
   pull_request:
+  merge_group: # GitHub Merge Queue
 
 concurrency:
   # Skip intermediate builds: all builds except for builds on the `master` branch
