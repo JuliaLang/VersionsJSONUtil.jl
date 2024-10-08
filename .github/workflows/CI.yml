@@ -60,6 +60,10 @@ jobs:
 
   full-test:
     name: Full test - Julia ${{ matrix.version }}
+    # This job takes a long time (1+ hours).
+    # So we intentionally skip this job on PR runs.
+    # But we still run this job on Merge Queue jobs.
+    if: github.event_name != 'pull_request'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 360
     strategy:
