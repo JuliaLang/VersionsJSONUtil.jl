@@ -42,7 +42,7 @@ jobs:
         with:
           version: ${{ matrix.version }}
 
-      - uses: actions/cache@c64c572235d810460d0d6876e9c705ad5002b353
+      - uses: actions/cache@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
         env:
           cache-name: cache-artifacts
         with:
@@ -76,7 +76,7 @@ jobs:
         with:
           version: "1.6"
 
-      - uses: actions/cache@c64c572235d810460d0d6876e9c705ad5002b353
+      - uses: actions/cache@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
         env:
           cache-name: cache-artifacts
         with:
