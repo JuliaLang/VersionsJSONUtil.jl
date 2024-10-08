@@ -56,7 +56,7 @@ jobs:
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
 
-      - uses: julia-actions/julia-runtest@eda4346d69c0d1653e483c397a83c7f32f4ef2ac
+      - uses: julia-actions/julia-runtest@d0c4f093badade621cd041bba567d1e832480ac2
 
   full-test:
     name: Full test
