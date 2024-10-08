@@ -25,7 +25,7 @@ env:
 
 jobs:
   package-tests:
-    name: Package tests - Julia ${{ matrix.version }}
+    name: Package tests
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -59,7 +59,7 @@ jobs:
       - uses: julia-actions/julia-runtest@eda4346d69c0d1653e483c397a83c7f32f4ef2ac
 
   full-test:
-    name: Full test - Julia ${{ matrix.version }}
+    name: Full test
     # This job takes a long time (1+ hours).
     # So we intentionally skip this job on PR runs.
     # But we still run this job on Merge Queue jobs.
