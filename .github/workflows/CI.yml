@@ -18,6 +18,7 @@ concurrency:
 
 permissions:
   contents: read
+  actions: write # Needed for `julia-actions/cache` to clear old caches
 
 env:
   aws_region: us-east-1
@@ -42,16 +43,7 @@ jobs:
         with:
           version: ${{ matrix.version }}
 
-      - uses: actions/cache@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
+      - uses: julia-actions/cache@824243901fb567ccb490b0d0e2483ccecde46834 # v2.0.5
 
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
@@ -76,16 +68,7 @@ jobs:
         with:
           version: "1.6"
 
-      - uses: actions/cache@2cdf405574d6ef1f33a1d12acccd3ae82f47b3f2
-        env:
-          cache-name: cache-artifacts
-        with:
-          path: ~/.julia/artifacts
-          key: ${{ runner.os }}-test-${{ env.cache-name }}-${{ hashFiles('**/Project.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-test-${{ env.cache-name }}-
-            ${{ runner.os }}-test-
-            ${{ runner.os }}-
+      - uses: julia-actions/cache@824243901fb567ccb490b0d0e2483ccecde46834 # v2.0.5
 
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
