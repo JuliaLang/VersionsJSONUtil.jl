@@ -103,7 +103,7 @@ jobs:
         run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
 
       - name: Upload versions.json as workflow artifact
-        uses: actions/upload-artifact@c24449f33cd45d4826c6702db7e49f7cdb9b551d
+        uses: actions/upload-artifact@604373da6381bf24206979c74d06a550515601b9
         with:
           name: versions
           path: versions.json
