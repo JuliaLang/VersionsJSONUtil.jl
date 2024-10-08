@@ -8,6 +8,7 @@ on:
     paths-ignore:
       - "README.md"
   pull_request:
+  merge_group: # GitHub Merge Queue
 
 concurrency:
   # Skip intermediate builds: all builds except for builds on the `master` branch
@@ -24,7 +25,7 @@ env:
 
 jobs:
   package-tests:
-    name: Package tests - Julia ${{ matrix.version }}
+    name: Package tests
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -58,23 +59,22 @@ jobs:
       - uses: julia-actions/julia-runtest@eda4346d69c0d1653e483c397a83c7f32f4ef2ac
 
   full-test:
-    name: Full test - Julia ${{ matrix.version }}
-    runs-on: ${{ matrix.os }}
+    name: Full test
+    # This job takes a long time (1+ hours).
+    # So we intentionally skip this job on PR runs.
+    # But we still run this job on Merge Queue jobs.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
-      matrix:
-        version:
-          - "1.6"
-        os:
-          - ubuntu-latest
 
     steps:
       - uses: actions/checkout@5a4ac9002d0be2fb38bd78e4b4dbde5606d7042f
 
       - uses: julia-actions/setup-julia@a0a0978e28861c11a3490cee468f87d5b568851a
         with:
-          version: ${{ matrix.version }}
+          version: "1.6"
 
       - uses: actions/cache@c64c572235d810460d0d6876e9c705ad5002b353
         env:
