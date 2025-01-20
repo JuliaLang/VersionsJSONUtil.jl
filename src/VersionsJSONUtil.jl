@@ -122,6 +122,11 @@ function is_stable(v::VersionNumber)
     return v.prerelease == () && v.build == ()
 end
 
+function is_lts(v::VersionNumber)
+    lts = VersionNumber(ENV["JULIA_LTS"])
+    return lts.major === v.major && lts.minor === v.minor && isempty(v.prerelease)
+end
+
 # Get list of tags from the Julia repo
 function get_tags()
     @info("Probing for tag list...")
@@ -239,6 +244,12 @@ function main(out_path)
             # Delete downloaded file
             rm(filepath)
         end
+    end
+    @info("Adding lts entry...")
+    lts_version = maximum(filter(is_lts, keys(meta)))
+    push!(meta, "lts" => meta[lts_version])
+    open(out_path, "w") do io
+        JSON.print(io, meta, 2)
     end
     @info "Tried $(number_urls_tried) versions, successfully downloaded $(number_urls_success)"
 end
