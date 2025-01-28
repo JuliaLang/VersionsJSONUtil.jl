@@ -1,0 +1,4 @@
+# In a CODEOWNERS file, the usernames must begin with @
+
+# Global owners for entire repo:
+* @SaschaMann @IanButterworth @DilumAluthge
