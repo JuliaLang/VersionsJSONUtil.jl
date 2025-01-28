@@ -1,3 +1,8 @@
+import JSON
+import Test
+
+using Test: @test
+
 const filename = only(ARGS)
 
 const dict = JSON.parsefile(filename)
