@@ -72,7 +72,7 @@ jobs:
 
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
-        
+
       - run: rm -f versions.json
 
       - name: Build versions.json
