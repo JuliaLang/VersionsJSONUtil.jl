@@ -23,8 +23,7 @@ permissions:
 env:
   aws_region: us-east-1
   s3_bucket: julialang2
-  JULIA_LTS: 1.10 
-   
+
 jobs:
   package-tests:
     name: Package tests
