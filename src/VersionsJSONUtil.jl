@@ -122,6 +122,11 @@ function is_stable(v::VersionNumber)
     return v.prerelease == () && v.build == ()
 end
 
+function is_lts(v::VersionNumber)
+    lts = VersionNumber(ENV["JULIA_LTS"])
+    return lts.major === v.major && lts.minor === v.minor && isempty(v.prerelease)
+end
+
 # Get list of tags from the Julia repo
 function get_tags()
     @info("Probing for tag list...")
@@ -135,7 +140,6 @@ end
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
-
     meta = Dict()
     number_urls_tried = 0
     number_urls_success = 0
@@ -173,6 +177,7 @@ function main(out_path)
             if !haskey(meta, version)
                 meta[version] = Dict(
                     "stable" => is_stable(version),
+                    "lts" => is_lts(version),
                     "files" => Vector{Dict}(),
                 )
             end
