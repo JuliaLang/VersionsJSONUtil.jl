@@ -17,6 +17,9 @@
                 },
                 "stable": {
                     "type": "boolean"
+                },
+                "lts": {
+                    "type": "boolean"
                 }
             },
             "required": [
