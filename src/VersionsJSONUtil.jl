@@ -123,8 +123,8 @@ function is_stable(v::VersionNumber)
 end
 
 function is_lts(v::VersionNumber)
-    lts = VersionNumber(ENV["JULIA_LTS"])
-    return lts.major === v.major && lts.minor === v.minor && isempty(v.prerelease)
+    lts_list = VersionNumber.(split(ENV["JULIA_LTS"], " "))
+    return any(lts -> lts.major === v.major && lts.minor === v.minor && isempty(v.prerelease), lts_list)
 end
 
 # Get list of tags from the Julia repo

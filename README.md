@@ -7,9 +7,9 @@ More info: https://github.com/JuliaLang/julia/issues/33817
 To trigger a rebuild of the `versions.json` file and to upload it to S3, you need to manually trigger the `CI` workflow in this repo.
 You can either trigger it through the GitHub UI or via an authenticated HTTP request.
 
-### Set LTS tag
+### Setting the LTS field
 
-The current Julia LTS version is set via the `JULIA_LTS` variable in the [CI workflow](.github/workflows/CI.yml).
+Julia LTS versions are set via the `JULIA_LTS` variable in the [CI workflow](.github/workflows/CI.yml).
 
 ### GitHub's UI
 
