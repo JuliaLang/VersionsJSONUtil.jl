@@ -140,6 +140,7 @@ end
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
+    
     meta = Dict()
     number_urls_tried = 0
     number_urls_success = 0
