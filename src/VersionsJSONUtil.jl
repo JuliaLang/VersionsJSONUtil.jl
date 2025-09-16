@@ -132,6 +132,25 @@ function get_tags()
     JSON.parse(String(read(tags_json_path)))
 end
 
+# Like `in`, but enforces that types match
+function typed_in(x::T, s::Set{T}) where {T}
+    return x in s
+end
+
+platform_is_tier_1(platform::Any, version::VersionNumber) = platform_is_tier_1(platform.p, version)
+function platform_is_tier_1(p::Platform, version::VersionNumber)
+    tier1_list = [
+        Platform("x86_64", "linux"; libc = "glibc"),
+        Platform("x86_64", "windows"),
+    ]
+    if version >= v"1.10-" # TODO: Fix this bound (I think it can be lower than 1.10)
+        apple_silicon = Platform("aarch64", "macos")
+        push!(tier1_list, apple_silicon)
+    end
+    return typed_in(p, tier1_list)
+end
+
+
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
@@ -152,7 +171,12 @@ function main(out_path)
                 filepath = WebCacheUtilities.download_to_cache(filename, url)
             catch ex
                 if isa(ex, InterruptException)
-                    rethrow(ex)
+                    rethrow()
+                end
+                if platform_is_tier_1(platform, version::VersionNumber)
+                    msg = "Unable to download binary for Tier 1 Platform; this error is fatal" platform version
+                    @error msg platform version
+                    rethrow()
                 end
                 println(stdout, " ✗")
                 continue
@@ -188,7 +212,7 @@ function main(out_path)
                     println(stdout, " ✓")
                 catch ex
                     if isa(ex, InterruptException)
-                        rethrow(ex)
+                        rethrow()
                     end
                     println(stdout, " ✗")
                 end
