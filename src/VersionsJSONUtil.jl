@@ -133,17 +133,20 @@ function get_tags()
 end
 
 # Like `in`, but enforces that types match
-function typed_in(x::T, s::Set{T}) where {T}
-    return x in s
+function typed_in(x::T, collection::Vector{T}) where {T}
+    return x in collection
 end
 
 platform_is_tier_1(platform::Any, version::VersionNumber) = platform_is_tier_1(platform.p, version)
 function platform_is_tier_1(p::Platform, version::VersionNumber)
     tier1_list = [
+        # These are always Tier 1, regardless of the Julia version:
         Platform("x86_64", "linux"; libc = "glibc"),
         Platform("x86_64", "windows"),
     ]
     if version >= v"1.10-" # TODO: Fix this bound (I think it can be lower than 1.10)
+        # macOS Apple Silicon is only a Tier 1 for newer Julia versions
+        # Older Julia versions don't have native builds for Apple Silicon
         apple_silicon = Platform("aarch64", "macos")
         push!(tier1_list, apple_silicon)
     end
