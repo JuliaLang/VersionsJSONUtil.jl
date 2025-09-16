@@ -8,20 +8,20 @@ struct WindowsPortable
     windows::Windows
 end
 WindowsPortable(arch::Symbol) = WindowsPortable(Windows(arch))
-@forward WindowsPortable.windows (up_os, tar_os, triplet, arch)
+@forward WindowsPortable.windows (up_os, tar_os, triplet, arch, extract_platform)
 
 struct WindowsTarball
     windows::Windows
 end
 WindowsTarball(arch::Symbol) = WindowsTarball(Windows(arch))
-@forward WindowsTarball.windows (up_os, tar_os, triplet, arch)
+@forward WindowsTarball.windows (up_os, tar_os, triplet, arch, extract_platform)
 
 "Wrapper type to define two jlext methods for macOS DMG and macOS tarball"
 struct MacOSTarball
     macos::MacOS
 end
 MacOSTarball(arch::Symbol) = MacOSTarball(MacOS(arch))
-@forward MacOSTarball.macos (up_os, tar_os, triplet, arch)
+@forward MacOSTarball.macos (up_os, tar_os, triplet, arch, extract_platform)
 
 up_os(p::Windows) = "winnt"
 up_os(p::MacOS) = "mac"
@@ -137,11 +137,12 @@ function typed_in(x::T, collection::Vector{T}) where {T}
     return x in collection
 end
 
-platform_is_tier_1(platform::Any, version::VersionNumber) = platform_is_tier_1(platform.p, version)
+extract_platform(x::Base.BinaryPlatforms.AbstractPlatform) = (x.p)::Platform
+platform_is_tier_1(x::Any, version::VersionNumber) = platform_is_tier_1(extract_platform(x), version)
 function platform_is_tier_1(p::Platform, version::VersionNumber)
     # For super old Julia versions, we just return false
     # This is because super old Julia versions didn't always conform to the same naming convention for S3 downloads
-    if version < v"0.4.0-" # TODO: Figure out how tight to make this bound
+    if version < v"0.4.0-"
         return false
     end
     tier1_list = [
