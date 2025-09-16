@@ -140,9 +140,10 @@ end
 extract_platform(x::Base.BinaryPlatforms.AbstractPlatform) = (x.p)::Platform
 platform_is_tier_1(x::Any, version::VersionNumber) = platform_is_tier_1(extract_platform(x), version)
 function platform_is_tier_1(p::Platform, version::VersionNumber)
-    # For super old Julia versions, we just return false
-    # This is because super old Julia versions didn't always conform to the same naming convention for S3 downloads
-    if version < v"0.5.0"
+    # For older Julia versions (prior to 1.0.0), we just return false
+    # This is because older Julia versions didn't always conform to the same naming convention for S3 downloads
+    # And e.g. tarballs didn't always exist for all platforms
+    if version < v"1.0.0"
         return false
     end
     tier1_list = [
