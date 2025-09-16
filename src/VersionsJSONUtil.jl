@@ -176,7 +176,7 @@ function main(out_path)
                 if isa(ex, InterruptException)
                     rethrow()
                 end
-                if platform_is_tier_1(platform, version::VersionNumber)
+                if platform_is_tier_1(platform, version)
                     msg = "Unable to download binary for Tier 1 platform; this error is fatal"
                     @error msg platform version
                     rethrow()
