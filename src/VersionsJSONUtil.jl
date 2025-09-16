@@ -144,7 +144,7 @@ function platform_is_tier_1(p::Platform, version::VersionNumber)
         Platform("x86_64", "linux"; libc = "glibc"),
         Platform("x86_64", "windows"),
     ]
-    if version >= v"1.10-" # TODO: Fix this bound (I think it can be lower than 1.10)
+    if version >= v"1.7.0-beta3"
         # macOS Apple Silicon is only a Tier 1 for newer Julia versions
         # Older Julia versions don't have native builds for Apple Silicon
         apple_silicon = Platform("aarch64", "macos")
