@@ -139,6 +139,11 @@ end
 
 platform_is_tier_1(platform::Any, version::VersionNumber) = platform_is_tier_1(platform.p, version)
 function platform_is_tier_1(p::Platform, version::VersionNumber)
+    # For super old Julia versions, we just return false
+    # This is because super old Julia versions didn't always conform to the same naming convention for S3 downloads
+    if version < v"0.4.0-" # TODO: Figure out how tight to make this bound
+        return false
+    end
     tier1_list = [
         # These are always Tier 1, regardless of the Julia version:
         Platform("x86_64", "linux"; libc = "glibc"),
@@ -178,7 +183,7 @@ function main(out_path)
                 end
                 if platform_is_tier_1(platform, version)
                     msg = "Unable to download binary for Tier 1 platform; this error is fatal"
-                    @error msg platform version
+                    @error msg platform version url
                     rethrow()
                 end
                 println(stdout, " ✗")
