@@ -142,7 +142,7 @@ platform_is_tier_1(x::Any, version::VersionNumber) = platform_is_tier_1(extract_
 function platform_is_tier_1(p::Platform, version::VersionNumber)
     # For super old Julia versions, we just return false
     # This is because super old Julia versions didn't always conform to the same naming convention for S3 downloads
-    if version < v"0.4.0-"
+    if version < v"0.5.0"
         return false
     end
     tier1_list = [
