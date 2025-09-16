@@ -177,7 +177,7 @@ function main(out_path)
                     rethrow()
                 end
                 if platform_is_tier_1(platform, version::VersionNumber)
-                    msg = "Unable to download binary for Tier 1 Platform; this error is fatal" platform version
+                    msg = "Unable to download binary for Tier 1 platform; this error is fatal"
                     @error msg platform version
                     rethrow()
                 end
