@@ -23,6 +23,12 @@ end
 MacOSTarball(arch::Symbol) = MacOSTarball(MacOS(arch))
 @forward MacOSTarball.macos (up_os, tar_os, triplet, arch)
 
+"Wrapper type for NoGPL build variants"
+struct NoGPL{T}
+    platform::T
+end
+@forward NoGPL.platform (triplet, arch, meta_os, jlext)
+
 up_os(p::Windows) = "winnt"
 up_os(p::MacOS) = "mac"
 up_os(p::Linux) = libc(p) == :glibc ? "linux" : "musl"
@@ -65,6 +71,37 @@ jlext(p::WindowsTarball) = "tar.gz"
 jlext(p::MacOS) = "dmg"
 jlext(p) = "tar.gz"
 
+# NoGPL-specific methods
+function up_os(p::NoGPL)
+    base = up_os(p.platform)
+    base == "winnt" && return "windowsnogpl"
+    base == "mac" && return "macosnogpl"
+    return base * "nogpl"
+end
+up_arch(p::NoGPL) = up_arch(p.platform)
+
+function tar_os(p::NoGPL)
+    a = arch(p.platform)
+    if p.platform isa Windows || p.platform isa WindowsPortable || p.platform isa WindowsTarball
+        os_name = "windowsnogpl"
+    elseif p.platform isa MacOS || p.platform isa MacOSTarball
+        os_name = "macosnogpl"
+    elseif p.platform isa Linux
+        os_name = "linuxnogpl"
+    else
+        error("Unsupported NoGPL platform: $(p.platform)")
+    end
+    if a == :x86_64
+        return "$(os_name)64"
+    else
+        return "$(os_name)-$(a)"
+    end
+end
+
+# Variant name for file metadata
+variant_name(p) = "default"
+variant_name(p::NoGPL) = "nogpl"
+
 # OS to use in the metadata
 # The OS in the download URL for Linux with musl is "musl"
 # But the OS in the metadata should be "linux"
@@ -78,6 +115,16 @@ function download_url(version::VersionNumber, platform)
         up_arch(platform), "/",
         version.major, ".", version.minor, "/",
         "julia-", version, "-", tar_os(platform), ".", jlext(platform),
+    )
+end
+
+function download_url(version::VersionNumber, platform::NoGPL, commit_short_hash::AbstractString)
+    return string(
+        "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/",
+        up_os(platform), "/",
+        up_arch(platform), "/",
+        version.major, ".", version.minor, "/",
+        "julia-", commit_short_hash, "-", tar_os(platform), ".", jlext(platform),
     )
 end
 
@@ -109,6 +156,17 @@ julia_platforms = [
     FreeBSD(:x86_64),
 ]
 
+nogpl_platforms = [
+    NoGPL(Linux(:x86_64; libc = :glibc)),
+    NoGPL(MacOS(:x86_64)),
+    NoGPL(MacOS(:aarch64)),
+    NoGPL(MacOSTarball(:x86_64)),
+    NoGPL(MacOSTarball(:aarch64)),
+    NoGPL(Windows(:x86_64)),
+    NoGPL(WindowsPortable(:x86_64)),
+    NoGPL(WindowsTarball(:x86_64)),
+]
+
 function vnum_maybe(x::AbstractString)
     try
         return VersionNumber(x)
@@ -132,9 +190,33 @@ function get_tags()
     JSON.parse(String(read(tags_json_path)))
 end
 
+# Get mapping of version → 10-char commit short hash using GitHub tags API
+function get_tag_commits()
+    @info("Fetching tag→commit mappings...")
+    tag_commits = Dict{VersionNumber, String}()
+    page = 1
+    while true
+        url = "https://api.github.com/repos/JuliaLang/julia/tags?per_page=100&page=$(page)"
+        cache_name = "julia_tags_page_$(page).json"
+        path = WebCacheUtilities.download_to_cache(cache_name, url)
+        tags = JSON.parse(String(read(path)))
+        isempty(tags) && break
+        for tag in tags
+            name = tag["name"]
+            v = vnum_maybe(name)
+            v === nothing && continue
+            sha = tag["commit"]["sha"]
+            tag_commits[v] = sha[1:10]
+        end
+        page += 1
+    end
+    return tag_commits
+end
+
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
+    tag_commits = get_tag_commits()
 
     meta = Dict()
     number_urls_tried = 0
@@ -216,6 +298,7 @@ function main(out_path)
                 "os" => meta_os(platform),
                 "arch" => string(arch(platform)),
                 "version" => string(version),
+                "variant" => variant_name(platform),
                 "sha256" => tarball_hash,
                 "size" => filesize(filepath),
                 "kind" => kind,
@@ -240,6 +323,91 @@ function main(out_path)
             rm(filepath)
         end
     end
+    # NoGPL variants
+    for version in tag_versions
+        commit_hash = get(tag_commits, version, nothing)
+        if commit_hash === nothing
+            @info "No commit hash found for $(version), skipping nogpl builds"
+            continue
+        end
+        for platform in nogpl_platforms
+            url = download_url(version, platform, commit_hash)
+            filename = basename(url)
+
+            # Download this URL to a local file
+            number_urls_tried += 1
+            local filepath
+            try
+                print(stdout, "Downloading $(filename)...")
+                filepath = WebCacheUtilities.download_to_cache(filename, url)
+            catch ex
+                if isa(ex, InterruptException)
+                    rethrow(ex)
+                end
+                println(stdout, " ✗")
+                continue
+            end
+            number_urls_success += 1
+            println(stdout, " ✓")
+
+            tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
+                open(filepath, "r") do io
+                    open(tarball_hash_path, "w") do hash_io
+                        write(hash_io, bytes2hex(sha256(io)))
+                    end
+                end
+            end
+            tarball_hash = String(read(tarball_hash_path))
+
+            # Initialize overall version key, if needed
+            if !haskey(meta, version)
+                meta[version] = Dict(
+                    "stable" => is_stable(version),
+                    "files" => Vector{Dict}(),
+                )
+            end
+
+            # Build up metadata about this file
+            if endswith(filename, ".dmg")
+                kind = "archive"
+                extension = "dmg"
+            elseif endswith(filename, ".exe")
+                kind = "installer"
+                extension = "exe"
+            elseif endswith(filename, ".tar.gz")
+                kind = "archive"
+                extension = "tar.gz"
+            elseif endswith(filename, ".zip")
+                kind = "archive"
+                extension = "zip"
+            else
+                error("Unsupported file extension in filename: $(filename)")
+            end
+            file_dict = Dict(
+                "triplet" => triplet(platform),
+                "os" => meta_os(platform),
+                "arch" => string(arch(platform)),
+                "version" => string(version),
+                "variant" => variant_name(platform),
+                "sha256" => tarball_hash,
+                "size" => filesize(filepath),
+                "kind" => kind,
+                "extension" => extension,
+                "url" => url,
+            )
+
+            push!(meta[version]["files"], file_dict)
+
+            # Write out new versions of our versions.json as we go
+            open(out_path, "w") do io
+                JSON.print(io, meta, 2)
+            end
+
+            # Delete downloaded file
+            rm(filepath)
+        end
+    end
+
     @info "Tried $(number_urls_tried) versions, successfully downloaded $(number_urls_success)"
 end
 
