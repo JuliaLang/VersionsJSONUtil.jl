@@ -213,6 +213,109 @@ function get_tag_commits()
     return tag_commits
 end
 
+# Determine whether to check for an .asc signature for a given platform.
+# Installers (MacOS .dmg and Windows .exe) don't have .asc files;
+# archives (.tar.gz, .zip) do.
+function _has_asc(platform)
+    inner = platform isa NoGPL ? platform.platform : platform
+    return !isa(inner, MacOS) && !isa(inner, Windows)
+end
+
+# Download a file, compute its hash, check for .asc signature, build metadata,
+# and write the updated versions.json. Returns true on success.
+function process_download!(meta, out_path, url, platform, version)
+    filename = basename(url)
+
+    # Download this URL to a local file
+    local filepath
+    try
+        print(stdout, "Downloading $(filename)...")
+        filepath = WebCacheUtilities.download_to_cache(filename, url)
+    catch ex
+        isa(ex, InterruptException) && rethrow(ex)
+        println(stdout, " ✗")
+        return false
+    end
+    println(stdout, " ✓")
+
+    tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
+        open(filepath, "r") do io
+            open(tarball_hash_path, "w") do hash_io
+                write(hash_io, bytes2hex(sha256(io)))
+            end
+        end
+    end
+    tarball_hash = String(read(tarball_hash_path))
+
+    # Initialize overall version key, if needed
+    vstr = string(version)
+    if !haskey(meta, vstr)
+        meta[vstr] = Dict(
+            "stable" => is_stable(version),
+            "files" => Vector{Dict}(),
+        )
+    end
+
+    # Test to see if there is an asc signature:
+    asc_signature = nothing
+    if _has_asc(platform)
+        asc_url = string(url, ".asc")
+        print(stdout, "    Downloading $(basename(asc_url))")
+        try
+            asc_filepath = WebCacheUtilities.download_to_cache(basename(asc_url), asc_url)
+            asc_signature = String(read(asc_filepath))
+            println(stdout, " ✓")
+        catch ex
+            isa(ex, InterruptException) && rethrow(ex)
+            println(stdout, " ✗")
+        end
+    end
+
+    # Build up metadata about this file
+    if endswith(filename, ".dmg")
+        kind = "archive"
+        extension = "dmg"
+    elseif endswith(filename, ".exe")
+        kind = "installer"
+        extension = "exe"
+    elseif endswith(filename, ".tar.gz")
+        kind = "archive"
+        extension = "tar.gz"
+    elseif endswith(filename, ".zip")
+        kind = "archive"
+        extension = "zip"
+    else
+        error("Unsupported file extension in filename: $(filename)")
+    end
+    file_dict = Dict(
+        "triplet" => triplet(platform),
+        "os" => meta_os(platform),
+        "arch" => string(arch(platform)),
+        "version" => string(version),
+        "variant" => variant_name(platform),
+        "sha256" => tarball_hash,
+        "size" => filesize(filepath),
+        "kind" => kind,
+        "extension" => extension,
+        "url" => url,
+    )
+    # Add in `.asc` signature content, if applicable
+    if asc_signature !== nothing
+        file_dict["asc"] = asc_signature
+    end
+
+    push!(meta[vstr]["files"], file_dict)
+
+    # Write out new versions of our versions.json as we go
+    open(out_path, "w") do io
+        JSON.print(io, meta, 2)
+    end
+
+    # Delete downloaded file
+    rm(filepath)
+    return true
+end
+
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
@@ -221,108 +324,18 @@ function main(out_path)
     meta = Dict()
     number_urls_tried = 0
     number_urls_success = 0
+
+    # Default variants
     for version in tag_versions
         for platform in julia_platforms
             url = download_url(version, platform)
-            filename = basename(url)
-
-            # Download this URL to a local file
             number_urls_tried += 1
-            local filepath
-            try
-                print(stdout, "Downloading $(filename)...")
-                filepath = WebCacheUtilities.download_to_cache(filename, url)
-            catch ex
-                if isa(ex, InterruptException)
-                    rethrow(ex)
-                end
-                println(stdout, " ✗")
-                continue
+            if process_download!(meta, out_path, url, platform, version)
+                number_urls_success += 1
             end
-            number_urls_success += 1
-            println(stdout, " ✓")
-
-            tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
-                open(filepath, "r") do io
-                    open(tarball_hash_path, "w") do hash_io
-                        write(hash_io, bytes2hex(sha256(io)))
-                    end
-                end
-            end
-            tarball_hash = String(read(tarball_hash_path))
-
-            # Initialize overall version key, if needed
-            if !haskey(meta, version)
-                meta[version] = Dict(
-                    "stable" => is_stable(version),
-                    "files" => Vector{Dict}(),
-                )
-            end
-
-            # Test to see if there is an asc signature:
-            asc_signature = nothing
-            if !isa(platform, MacOS) && !isa(platform, Windows)
-                asc_url = string(url, ".asc")
-                print(stdout, "    Downloading $(basename(asc_url))")
-                try
-                    asc_filepath = WebCacheUtilities.download_to_cache(basename(asc_url), asc_url)
-                    asc_signature = String(read(asc_filepath))
-                    println(stdout, " ✓")
-                catch ex
-                    if isa(ex, InterruptException)
-                        rethrow(ex)
-                    end
-                    println(stdout, " ✗")
-                end
-
-            end
-
-            # Build up metadata about this file
-            if endswith(filename, ".dmg")
-                kind = "archive"
-                extension = "dmg"
-            elseif endswith(filename, ".exe")
-                kind = "installer"
-                extension = "exe"
-            elseif endswith(filename, ".tar.gz")
-                kind = "archive"
-                extension = "tar.gz"
-            elseif endswith(filename, ".zip")
-                kind = "archive"
-                extension = "zip"
-            else
-                error("Unsupported file extension in filename: $(filename)")
-            end
-            file_dict = Dict(
-                "triplet" => triplet(platform),
-                "os" => meta_os(platform),
-                "arch" => string(arch(platform)),
-                "version" => string(version),
-                "variant" => variant_name(platform),
-                "sha256" => tarball_hash,
-                "size" => filesize(filepath),
-                "kind" => kind,
-                "extension" => extension,
-                "url" => url,
-            )
-            # Add in `.asc` signature content, if applicable
-            if asc_signature !== nothing
-                file_dict["asc"] = asc_signature
-            end
-
-            # Right now, all we have are archives, but let's be forward-thinking
-            # and make this an array of dictionaries that is easy to extensibly match
-            push!(meta[version]["files"], file_dict)
-
-            # Write out new versions of our versions.json as we go
-            open(out_path, "w") do io
-                JSON.print(io, meta, 2)
-            end
-
-            # Delete downloaded file
-            rm(filepath)
         end
     end
+
     # NoGPL variants
     for version in tag_versions
         commit_hash = get(tag_commits, version, nothing)
@@ -332,79 +345,10 @@ function main(out_path)
         end
         for platform in nogpl_platforms
             url = download_url(version, platform, commit_hash)
-            filename = basename(url)
-
-            # Download this URL to a local file
             number_urls_tried += 1
-            local filepath
-            try
-                print(stdout, "Downloading $(filename)...")
-                filepath = WebCacheUtilities.download_to_cache(filename, url)
-            catch ex
-                if isa(ex, InterruptException)
-                    rethrow(ex)
-                end
-                println(stdout, " ✗")
-                continue
+            if process_download!(meta, out_path, url, platform, version)
+                number_urls_success += 1
             end
-            number_urls_success += 1
-            println(stdout, " ✓")
-
-            tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
-                open(filepath, "r") do io
-                    open(tarball_hash_path, "w") do hash_io
-                        write(hash_io, bytes2hex(sha256(io)))
-                    end
-                end
-            end
-            tarball_hash = String(read(tarball_hash_path))
-
-            # Initialize overall version key, if needed
-            if !haskey(meta, version)
-                meta[version] = Dict(
-                    "stable" => is_stable(version),
-                    "files" => Vector{Dict}(),
-                )
-            end
-
-            # Build up metadata about this file
-            if endswith(filename, ".dmg")
-                kind = "archive"
-                extension = "dmg"
-            elseif endswith(filename, ".exe")
-                kind = "installer"
-                extension = "exe"
-            elseif endswith(filename, ".tar.gz")
-                kind = "archive"
-                extension = "tar.gz"
-            elseif endswith(filename, ".zip")
-                kind = "archive"
-                extension = "zip"
-            else
-                error("Unsupported file extension in filename: $(filename)")
-            end
-            file_dict = Dict(
-                "triplet" => triplet(platform),
-                "os" => meta_os(platform),
-                "arch" => string(arch(platform)),
-                "version" => string(version),
-                "variant" => variant_name(platform),
-                "sha256" => tarball_hash,
-                "size" => filesize(filepath),
-                "kind" => kind,
-                "extension" => extension,
-                "url" => url,
-            )
-
-            push!(meta[version]["files"], file_dict)
-
-            # Write out new versions of our versions.json as we go
-            open(out_path, "w") do io
-                JSON.print(io, meta, 2)
-            end
-
-            # Delete downloaded file
-            rm(filepath)
         end
     end
 
