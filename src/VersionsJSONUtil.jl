@@ -71,31 +71,21 @@ jlext(p::WindowsTarball) = "tar.gz"
 jlext(p::MacOS) = "dmg"
 jlext(p) = "tar.gz"
 
-# NoGPL-specific methods
-function up_os(p::NoGPL)
-    base = up_os(p.platform)
-    base == "winnt" && return "windowsnogpl"
-    base == "mac" && return "macosnogpl"
-    return base * "nogpl"
+# NoGPL-specific methods: the S3 bucket uses a uniform {os}nogpl naming scheme
+function _nogpl_os(p)
+    (p isa Windows || p isa WindowsPortable || p isa WindowsTarball) && return "windowsnogpl"
+    (p isa MacOS || p isa MacOSTarball) && return "macosnogpl"
+    p isa Linux && return "linuxnogpl"
+    error("Unsupported NoGPL platform: $p")
 end
+
+up_os(p::NoGPL) = _nogpl_os(p.platform)
 up_arch(p::NoGPL) = up_arch(p.platform)
 
 function tar_os(p::NoGPL)
+    os = _nogpl_os(p.platform)
     a = arch(p.platform)
-    if p.platform isa Windows || p.platform isa WindowsPortable || p.platform isa WindowsTarball
-        os_name = "windowsnogpl"
-    elseif p.platform isa MacOS || p.platform isa MacOSTarball
-        os_name = "macosnogpl"
-    elseif p.platform isa Linux
-        os_name = "linuxnogpl"
-    else
-        error("Unsupported NoGPL platform: $(p.platform)")
-    end
-    if a == :x86_64
-        return "$(os_name)64"
-    else
-        return "$(os_name)-$(a)"
-    end
+    return a == :x86_64 ? "$(os)64" : "$(os)-$(a)"
 end
 
 # OS to use in the metadata
@@ -209,14 +199,6 @@ function get_tag_commits()
     return tag_commits
 end
 
-# Determine whether to check for an .asc signature for a given platform.
-# Installers (MacOS .dmg and Windows .exe) don't have .asc files;
-# archives (.tar.gz, .zip) do.
-function _has_asc(platform)
-    inner = platform isa NoGPL ? platform.platform : platform
-    return !isa(inner, MacOS) && !isa(inner, Windows)
-end
-
 # Download a file, compute its hash, check for .asc signature, build metadata,
 # and write the updated versions.json. Returns true on success.
 function process_download!(meta, out_path, url, platform, version)
@@ -252,21 +234,6 @@ function process_download!(meta, out_path, url, platform, version)
         )
     end
 
-    # Test to see if there is an asc signature:
-    asc_signature = nothing
-    if _has_asc(platform)
-        asc_url = string(url, ".asc")
-        print(stdout, "    Downloading $(basename(asc_url))")
-        try
-            asc_filepath = WebCacheUtilities.download_to_cache(basename(asc_url), asc_url)
-            asc_signature = String(read(asc_filepath))
-            println(stdout, " ✓")
-        catch ex
-            isa(ex, InterruptException) && rethrow(ex)
-            println(stdout, " ✗")
-        end
-    end
-
     # Build up metadata about this file
     if endswith(filename, ".dmg")
         kind = "archive"
@@ -283,6 +250,22 @@ function process_download!(meta, out_path, url, platform, version)
     else
         error("Unsupported file extension in filename: $(filename)")
     end
+
+    # Archives (.tar.gz, .zip) may have .asc signatures; installers (.dmg, .exe) don't
+    asc_signature = nothing
+    if extension in ("tar.gz", "zip")
+        asc_url = string(url, ".asc")
+        print(stdout, "    Downloading $(basename(asc_url))")
+        try
+            asc_filepath = WebCacheUtilities.download_to_cache(basename(asc_url), asc_url)
+            asc_signature = String(read(asc_filepath))
+            println(stdout, " ✓")
+        catch ex
+            isa(ex, InterruptException) && rethrow(ex)
+            println(stdout, " ✗")
+        end
+    end
+
     file_dict = Dict(
         "triplet" => triplet(platform),
         "os" => meta_os(platform),
@@ -294,7 +277,6 @@ function process_download!(meta, out_path, url, platform, version)
         "extension" => extension,
         "url" => url,
     )
-    # Add in `.asc` signature content, if applicable
     if asc_signature !== nothing
         file_dict["asc"] = asc_signature
     end
@@ -311,50 +293,40 @@ function process_download!(meta, out_path, url, platform, version)
     return true
 end
 
-function main(out_path)
-    tags = get_tags()
-    tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
-
+# Core loop: try downloading each (version, platform) URL and build metadata.
+# `url_fn(version, platform)` returns the URL to try, or `nothing` to skip.
+function _build_versions(out_path, tag_versions, platforms, url_fn)
     meta = Dict()
     number_urls_tried = 0
     number_urls_success = 0
     for version in tag_versions
-        for platform in julia_platforms
-            url = download_url(version, platform)
+        for platform in platforms
+            url = url_fn(version, platform)
+            url === nothing && continue
             number_urls_tried += 1
             if process_download!(meta, out_path, url, platform, version)
                 number_urls_success += 1
             end
         end
     end
-
     @info "Tried $(number_urls_tried) versions, successfully downloaded $(number_urls_success)"
+end
+
+function main(out_path)
+    tags = get_tags()
+    tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
+    _build_versions(out_path, tag_versions, julia_platforms, download_url)
 end
 
 function main_nogpl(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
     tag_commits = get_tag_commits()
-
-    meta = Dict()
-    number_urls_tried = 0
-    number_urls_success = 0
-    for version in tag_versions
+    _build_versions(out_path, tag_versions, nogpl_platforms) do version, platform
         commit_hash = get(tag_commits, version, nothing)
-        if commit_hash === nothing
-            @info "No commit hash found for $(version), skipping nogpl builds"
-            continue
-        end
-        for platform in nogpl_platforms
-            url = download_url(version, platform, commit_hash)
-            number_urls_tried += 1
-            if process_download!(meta, out_path, url, platform, version)
-                number_urls_success += 1
-            end
-        end
+        commit_hash === nothing && return nothing
+        download_url(version, platform, commit_hash)
     end
-
-    @info "Tried $(number_urls_tried) versions, successfully downloaded $(number_urls_success)"
 end
 
 end # module
