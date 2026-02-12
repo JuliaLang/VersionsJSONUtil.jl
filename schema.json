@@ -68,9 +68,6 @@
                 },
                 "extension": {
                     "$ref": "#/definitions/FileExtension"
-                },
-                "variant": {
-                    "$ref": "#/definitions/Variant"
                 }
             },
             "required": [
@@ -82,7 +79,6 @@
                 "size",
                 "triplet",
                 "url",
-                "variant",
                 "version"
             ],
             "title": "File"
@@ -142,14 +138,6 @@
                 "zip"
             ],
             "title": "FileExtension"
-        },
-        "Variant": {
-            "type": "string",
-            "enum": [
-                "default",
-                "nogpl"
-            ],
-            "title": "Variant"
         }
     }
 }

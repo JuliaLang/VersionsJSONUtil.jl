@@ -23,6 +23,7 @@ permissions:
 env:
   aws_region: us-east-1
   s3_bucket: julialang2
+  s3_bucket_nogpl: julialang-nogpl
 
 jobs:
   package-tests:
@@ -73,7 +74,7 @@ jobs:
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
 
-      - run: rm -f versions.json
+      - run: rm -f versions.json versions-nogpl.json
 
       - name: Build versions.json
         run: |
@@ -82,8 +83,18 @@ jobs:
           VersionsJSONUtil.main("versions.json")
         shell: julia --project {0}
 
+      - name: Build versions-nogpl.json
+        run: |
+          using VersionsJSONUtil
+
+          VersionsJSONUtil.main_nogpl("versions-nogpl.json")
+        shell: julia --project {0}
+
       - name: Validate versions.json against schema
         run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
+
+      - name: Validate versions-nogpl.json against schema
+        run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions-nogpl.json
 
       - run: julia --project test/more_tests.jl versions.json
 
@@ -92,6 +103,13 @@ jobs:
         with:
           name: versions
           path: versions.json
+          if-no-files-found: error
+
+      - name: Upload versions-nogpl.json as workflow artifact
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        with:
+          name: versions-nogpl
+          path: versions-nogpl.json
           if-no-files-found: error
 
   upload-to-s3:
@@ -106,6 +124,11 @@ jobs:
         with:
           name: versions
 
+      - name: Download versions-nogpl.json from previous job
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16
+        with:
+          name: versions-nogpl
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502
         with:
@@ -115,6 +138,9 @@ jobs:
 
       - name: Upload versions.json to S3
         run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
+
+      - name: Upload versions-nogpl.json to S3
+        run: aws s3 cp versions-nogpl.json s3://${{ env.s3_bucket_nogpl }}/bin-nogpl/versions.v1.json --acl public-read --no-progress
 
       - name: Purge cache
         run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions.json

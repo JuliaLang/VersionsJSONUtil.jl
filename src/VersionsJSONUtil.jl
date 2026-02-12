@@ -98,10 +98,6 @@ function tar_os(p::NoGPL)
     end
 end
 
-# Variant name for file metadata
-variant_name(p) = "default"
-variant_name(p::NoGPL) = "nogpl"
-
 # OS to use in the metadata
 # The OS in the download URL for Linux with musl is "musl"
 # But the OS in the metadata should be "linux"
@@ -292,7 +288,6 @@ function process_download!(meta, out_path, url, platform, version)
         "os" => meta_os(platform),
         "arch" => string(arch(platform)),
         "version" => string(version),
-        "variant" => variant_name(platform),
         "sha256" => tarball_hash,
         "size" => filesize(filepath),
         "kind" => kind,
@@ -319,13 +314,10 @@ end
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
-    tag_commits = get_tag_commits()
 
     meta = Dict()
     number_urls_tried = 0
     number_urls_success = 0
-
-    # Default variants
     for version in tag_versions
         for platform in julia_platforms
             url = download_url(version, platform)
@@ -336,7 +328,17 @@ function main(out_path)
         end
     end
 
-    # NoGPL variants
+    @info "Tried $(number_urls_tried) versions, successfully downloaded $(number_urls_success)"
+end
+
+function main_nogpl(out_path)
+    tags = get_tags()
+    tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
+    tag_commits = get_tag_commits()
+
+    meta = Dict()
+    number_urls_tried = 0
+    number_urls_success = 0
     for version in tag_versions
         commit_hash = get(tag_commits, version, nothing)
         if commit_hash === nothing

@@ -52,12 +52,9 @@ const nogpl_download_urls = Dict(
         end
     end
 
-    @testset "variant_name" begin
-        @test VersionsJSONUtil.variant_name(Linux(:x86_64)) == "default"
-        @test VersionsJSONUtil.variant_name(MacOS(:x86_64)) == "default"
-        @test VersionsJSONUtil.variant_name(Windows(:x86_64)) == "default"
-        @test VersionsJSONUtil.variant_name(NoGPL(Linux(:x86_64; libc = :glibc))) == "nogpl"
-        @test VersionsJSONUtil.variant_name(NoGPL(MacOS(:x86_64))) == "nogpl"
-        @test VersionsJSONUtil.variant_name(NoGPL(Windows(:x86_64))) == "nogpl"
+    @testset "meta_os for NoGPL" begin
+        @test VersionsJSONUtil.meta_os(NoGPL(Linux(:x86_64; libc = :glibc))) == "linux"
+        @test VersionsJSONUtil.meta_os(NoGPL(MacOS(:x86_64))) == "mac"
+        @test VersionsJSONUtil.meta_os(NoGPL(Windows(:x86_64))) == "winnt"
     end
 end
