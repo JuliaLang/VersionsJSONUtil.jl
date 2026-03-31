@@ -1,5 +1,7 @@
 # VersionsJSONUtil
 
+S3 URL: https://julialang-s3.julialang.org/bin/versions.json
+
 More info: https://github.com/JuliaLang/julia/issues/33817
 
 ## Triggering a rebuild
