@@ -43,7 +43,7 @@ jobs:
         with:
           version: ${{ matrix.version }}
 
-      - uses: julia-actions/cache@2b1bf4d8a138668ac719ea7ca149b53ed8d8401e # v2.0.7
+      - uses: julia-actions/cache@9a93c5fb3e9c1c20b60fc80a478cae53e38618a4 # v3.0.2
 
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
@@ -68,7 +68,7 @@ jobs:
         with:
           version: "1.6"
 
-      - uses: julia-actions/cache@2b1bf4d8a138668ac719ea7ca149b53ed8d8401e # v2.0.7
+      - uses: julia-actions/cache@9a93c5fb3e9c1c20b60fc80a478cae53e38618a4 # v3.0.2
 
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
