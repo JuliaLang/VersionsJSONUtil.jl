@@ -96,6 +96,7 @@ This allows us to verify if changes might affect downstream tooling.
 - [julia-actions/setup-julia](https://github.com/julia-actions/setup-julia)
 - [johnnychen94/jill.py](https://github.com/johnnychen94/jill.py): a Julia installer written in Python
 - [abelsiqueira/jill](https://github.com/abelsiqueira/jill): a Julia installer
+- [Juliaup](https://github.com/JuliaLang/juliaup): Julia installer and version multiplexer
 
 ## Third Party Notice
 
