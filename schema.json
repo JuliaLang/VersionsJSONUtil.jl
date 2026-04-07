@@ -41,6 +41,12 @@
                 "sha256": {
                     "type": "string"
                 },
+                "git-tree-sha1": {
+                    "type": "string"
+                },
+                "git-tree-sha256": {
+                    "type": "string"
+                },
                 "size": {
                     "type": "integer"
                 },

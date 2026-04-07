@@ -1,7 +1,9 @@
 module VersionsJSONUtil
 
 using HTTP, JSON, Pkg.BinaryPlatforms, WebCacheUtilities, SHA, Lazy
+using Tar: Tar
 import Pkg.BinaryPlatforms: triplet, arch
+import Pkg.PlatformEngines: exe7z
 
 "Wrapper types to define three jlext methods for portable, tarball and installer Windows"
 struct WindowsPortable
@@ -109,6 +111,11 @@ julia_platforms = [
     FreeBSD(:x86_64),
 ]
 
+const tarball_git_tree_hash_skiplist = [
+    # Corrupt gzip stream: `7z` reports a CRC failure for the embedded tarball.
+    "https://julialang-s3.julialang.org/bin/linux/x86/0.7/julia-0.7.0-alpha-linux-i686.tar.gz",
+]
+
 function vnum_maybe(x::AbstractString)
     try
         return VersionNumber(x)
@@ -120,6 +127,10 @@ end
 
 function is_stable(v::VersionNumber)
     return v.prerelease == () && v.build == ()
+end
+
+function tarball_git_tree_hash(; tarball_path::AbstractString, algorithm::AbstractString)
+    return open(io -> Tar.tree_hash(io; algorithm), `$(exe7z()) x $tarball_path -so`)
 end
 
 # Get list of tags from the Julia repo
@@ -160,6 +171,22 @@ function main(out_path)
             number_urls_success += 1
             println(stdout, " ✓")
 
+            if endswith(filename, ".dmg")
+                kind = "archive"
+                extension = "dmg"
+            elseif endswith(filename, ".exe")
+                kind = "installer"
+                extension = "exe"
+            elseif endswith(filename, ".tar.gz")
+                kind = "archive"
+                extension = "tar.gz"
+            elseif endswith(filename, ".zip")
+                kind = "archive"
+                extension = "zip"
+            else
+                error("Unsupported file extension in filename: $(filename)")
+            end
+
             tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
                 open(filepath, "r") do io
                     open(tarball_hash_path, "w") do hash_io
@@ -168,6 +195,24 @@ function main(out_path)
                 end
             end
             tarball_hash = String(read(tarball_hash_path))
+
+            if extension == "tar.gz" && !(url in tarball_git_tree_hash_skiplist)
+                tarball_git_tree_hashes = Dict{String, String}()
+                tree_hash_path_sha1 = hit_file_cache("$(filename).git-tree-sha1") do tree_hash_path
+                    open(tree_hash_path, "w") do hash_io
+                        write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha1"))
+                    end
+                end
+                tree_hash_path_sha256 = hit_file_cache("$(filename).git-tree-sha256") do tree_hash_path
+                    open(tree_hash_path, "w") do hash_io
+                        write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha256"))
+                    end
+                end
+                tarball_git_tree_hashes["git-tree-sha1"] = String(read(tree_hash_path_sha1))
+                tarball_git_tree_hashes["git-tree-sha256"] = String(read(tree_hash_path_sha256))
+            else
+                tarball_git_tree_hashes = nothing
+            end
 
             # Initialize overall version key, if needed
             if !haskey(meta, version)
@@ -196,21 +241,6 @@ function main(out_path)
             end
 
             # Build up metadata about this file
-            if endswith(filename, ".dmg")
-                kind = "archive"
-                extension = "dmg"
-            elseif endswith(filename, ".exe")
-                kind = "installer"
-                extension = "exe"
-            elseif endswith(filename, ".tar.gz")
-                kind = "archive"
-                extension = "tar.gz"
-            elseif endswith(filename, ".zip")
-                kind = "archive"
-                extension = "zip"
-            else
-                error("Unsupported file extension in filename: $(filename)")
-            end
             file_dict = Dict(
                 "triplet" => triplet(platform),
                 "os" => meta_os(platform),
@@ -222,6 +252,9 @@ function main(out_path)
                 "extension" => extension,
                 "url" => url,
             )
+            if tarball_git_tree_hashes !== nothing
+                merge!(file_dict, tarball_git_tree_hashes)
+            end
             # Add in `.asc` signature content, if applicable
             if asc_signature !== nothing
                 file_dict["asc"] = asc_signature
