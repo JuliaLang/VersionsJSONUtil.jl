@@ -33,7 +33,7 @@ jobs:
       fail-fast: false
       matrix:
         version:
-          - "1.6"
+          - '1.10' # 1.10 = current LTS
         os:
           - ubuntu-latest
     steps:
@@ -66,7 +66,7 @@ jobs:
 
       - uses: julia-actions/setup-julia@4c0cb0fce8556fdb04a90347310e5db8b1f98fb9 # v2.7.0
         with:
-          version: "1.6"
+          version: '1.10' # 1.10 = current LTS
 
       - uses: julia-actions/cache@9a93c5fb3e9c1c20b60fc80a478cae53e38618a4 # v3.0.2
 
