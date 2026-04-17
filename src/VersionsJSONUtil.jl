@@ -1,6 +1,13 @@
 module VersionsJSONUtil
 
-using HTTP, JSON, Pkg.BinaryPlatforms, WebCacheUtilities, SHA, Lazy
+using HTTP: HTTP
+using JSON: JSON
+using Lazy: Lazy, @forward
+using Pkg.BinaryPlatforms: Windows, MacOS, Linux, FreeBSD, libc, wordsize
+using SHA: SHA, sha256
+using WebCacheUtilities: WebCacheUtilities, hit_file_cache
+
+# These two need to be `import` (not `using`), because we add methods to them:
 import Pkg.BinaryPlatforms: triplet, arch
 using OrderedCollections: OrderedDict
 
