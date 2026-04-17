@@ -14,6 +14,12 @@ TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 WebCacheUtilities = "0c1c26de-fc5f-47ff-87a8-a157289a9bac"
 
 [compat]
+HTTP = "1"
+JSON = "1"
+Lazy = "0.15"
+OrderedCollections = "1"
+TimeZones = "1"
+WebCacheUtilities = "0.1"
 julia = "1.6"
 
 [extras]
