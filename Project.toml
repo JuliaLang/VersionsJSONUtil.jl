@@ -1,7 +1,7 @@
 name = "VersionsJSONUtil"
 uuid = "a00667fb-7e89-46d8-a4ce-9a732f2f8be9"
 authors = ["Elliot Saba <staticfloat@gmail.com>", "Sascha Mann <git@mail.saschamann.eu>"]
-version = "0.1.0"
+version = "0.1.0-DEV"
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
