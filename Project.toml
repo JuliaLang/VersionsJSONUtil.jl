@@ -1,6 +1,6 @@
 name = "VersionsJSONUtil"
 uuid = "a00667fb-7e89-46d8-a4ce-9a732f2f8be9"
-authors = ["Elliot Saba <staticfloat@gmail.com>", "Sascha Mann <git@mail.saschamann.eu>"]
+authors = ["Elliot Saba <staticfloat@gmail.com>", "Sascha Mann <git@mail.saschamann.eu>", "contributors"]
 version = "0.1.0"
 
 [deps]
