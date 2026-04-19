@@ -118,3 +118,28 @@ jobs:
 
       - name: Purge cache
         run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions.json
+
+  test-current-s3:
+    # We intentionally do not make this job a "required status check" on PRs.
+    # Because if the currently deployed `versions.json` on S3 is already broken,
+    # then this job will fail, which would block us from merging a PR with fixes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          persist-credentials: false
+      - uses: julia-actions/setup-julia@4c0cb0fce8556fdb04a90347310e5db8b1f98fb9 # v2.7.0
+        with:
+          version: 'lts'
+      - uses: julia-actions/cache@9a93c5fb3e9c1c20b60fc80a478cae53e38618a4 # v3.0.2
+      - name: Install dependencies
+        run: julia --color=yes --project -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+      - name: Remove an old versions.json if one happens to be lying around
+        run: rm -fv versions.json
+      - name: Download the current versions.json from S3
+        run: curl -LO https://julialang-s3.julialang.org/bin/versions.json
+      - name: Run the post-build tests on the versions.json that we downloaded from S3
+        run: julia --project test/more_tests.jl versions.json
