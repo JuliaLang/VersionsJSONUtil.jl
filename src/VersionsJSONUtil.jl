@@ -1,5 +1,7 @@
 module VersionsJSONUtil
 
+# Hello world
+
 using HTTP, JSON, Pkg.BinaryPlatforms, WebCacheUtilities, SHA, Lazy
 using Tar: Tar
 import Pkg.BinaryPlatforms: triplet, arch
