@@ -1,6 +1,6 @@
 using Pkg.BinaryPlatforms, JSON
 using VersionsJSONUtil
-import VersionsJSONUtil: WindowsPortable, WindowsTarball, MacOSTarball
+import VersionsJSONUtil: WindowsPortable, WindowsTarball, MacOSTarball, NoGPL
 using Test
 
 const download_urls = Dict(
@@ -26,10 +26,35 @@ const download_urls = Dict(
     ),
 )
 
+const nogpl_download_urls = Dict(
+    v"1.10.0" => Dict(
+        NoGPL(Linux(:x86_64; libc = :glibc)) => "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/linuxnogpl/x64/1.10/julia-abcdef0123-linuxnogpl64.tar.gz",
+        NoGPL(MacOS(:x86_64)) =>                "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/macosnogpl/x64/1.10/julia-abcdef0123-macosnogpl64.dmg",
+        NoGPL(MacOS(:aarch64)) =>               "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/macosnogpl/aarch64/1.10/julia-abcdef0123-macosnogpl-aarch64.dmg",
+        NoGPL(MacOSTarball(:x86_64)) =>         "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/macosnogpl/x64/1.10/julia-abcdef0123-macosnogpl64.tar.gz",
+        NoGPL(MacOSTarball(:aarch64)) =>        "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/macosnogpl/aarch64/1.10/julia-abcdef0123-macosnogpl-aarch64.tar.gz",
+        NoGPL(Windows(:x86_64)) =>              "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/windowsnogpl/x64/1.10/julia-abcdef0123-windowsnogpl64.exe",
+        NoGPL(WindowsPortable(:x86_64)) =>      "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/windowsnogpl/x64/1.10/julia-abcdef0123-windowsnogpl64.zip",
+        NoGPL(WindowsTarball(:x86_64)) =>       "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/windowsnogpl/x64/1.10/julia-abcdef0123-windowsnogpl64.tar.gz",
+    ),
+)
+
 @testset "VersionsJSONUtil.jl" begin
     @testset "Download URLs for $v" for v in keys(download_urls)
         for (p, url) in download_urls[v]
             @test VersionsJSONUtil.download_url(v, p) == url
         end
+    end
+
+    @testset "NoGPL Download URLs for $v" for v in keys(nogpl_download_urls)
+        for (p, url) in nogpl_download_urls[v]
+            @test VersionsJSONUtil.download_url(v, p, "abcdef0123") == url
+        end
+    end
+
+    @testset "meta_os for NoGPL" begin
+        @test VersionsJSONUtil.meta_os(NoGPL(Linux(:x86_64; libc = :glibc))) == "linux"
+        @test VersionsJSONUtil.meta_os(NoGPL(MacOS(:x86_64))) == "mac"
+        @test VersionsJSONUtil.meta_os(NoGPL(Windows(:x86_64))) == "winnt"
     end
 end
