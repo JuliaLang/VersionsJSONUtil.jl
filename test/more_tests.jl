@@ -67,6 +67,8 @@ end
                     ]
                     optional_keys = [
                         "asc",
+                        "git-tree-sha1",
+                        "git-tree-sha256",
                     ]
                     allowed_keys = union(required_keys, optional_keys)
                     @test required_keys ⊆ collect(keys(filedict))
