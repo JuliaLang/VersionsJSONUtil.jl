@@ -23,9 +23,13 @@ This allows us to check if changes might break downstream tooling.
 - [abelsiqueira/jill](https://github.com/abelsiqueira/jill): A Julia installer written in Bash.
 - [johnnychen94/jill.py](https://github.com/johnnychen94/jill.py): A Julia installer written in Python.
 - [julia-actions/setup-julia](https://github.com/julia-actions/setup-julia): Installs Julia in GitHub Actions CI jobs.
-- [JuliaLang/Juliaup](https://github.com/JuliaLang/juliaup): Julia installer and version manager[^2]
+- [JuliaCI/julia-buildkite-plugin](https://github.com/JuliaCI/julia-buildkite-plugin): Buildkite plugin to install Julia for use in a pipeline. This plugin is used in Base Julia CI.
+- [JuliaCI/julia-snap](https://github.com/JuliaCI/julia-snap): Snap setup for Julia.
+- [JuliaCI/PkgEval.jl](https://github.com/JuliaCI/PkgEval.jl): A package to test one or more Julia versions against the Julia package ecosystem.
+- [JuliaLang/Juliaup](https://github.com/JuliaLang/juliaup): Julia installer and version manager[^2].
+- [JuliaLang/www.julialang.org](https://github.com/JuliaLang/www.julialang.org): The Julia website repo (uses `versions.json` to auto-generate the list of Julia releases).
 
-[^2]: This also means that every tool that uses Juliaup is thus also downstream of `versions.json`.
+[^2]: This means that every tool that uses Juliaup is indirectly downstream of `versions.json`.
 
 ## Devdocs
 
