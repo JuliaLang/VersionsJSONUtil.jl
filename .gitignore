@@ -1,1 +1,10 @@
+# Directories:
+cache/
+node_modules/
+
+# Files:
+internal.json
 versions.json
+
+# macOS-specific:
+.DS_Store

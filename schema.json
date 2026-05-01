@@ -29,14 +29,26 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-                "triplet": {
-                    "$ref": "#/definitions/Triplet"
+                "arch": {
+                    "$ref": "#/definitions/Arch"
+                },
+                "asc": {
+                    "type": "string"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "extension": {
+                    "$ref": "#/definitions/FileExtension"
                 },
                 "kind": {
                     "$ref": "#/definitions/Kind"
                 },
-                "arch": {
-                    "$ref": "#/definitions/Arch"
+                "last-modified": {
+                    "type": "string"
+                },
+                "os": {
+                    "$ref": "#/definitions/OS"
                 },
                 "sha256": {
                     "type": "string"
@@ -50,11 +62,8 @@
                 "size": {
                     "type": "integer"
                 },
-                "version": {
-                    "type": "string"
-                },
-                "os": {
-                    "$ref": "#/definitions/OS"
+                "triplet": {
+                    "$ref": "#/definitions/Triplet"
                 },
                 "url": {
                     "type": "string",
@@ -69,11 +78,8 @@
                         ".zip"
                     ]
                 },
-                "asc": {
+                "version": {
                     "type": "string"
-                },
-                "extension": {
-                    "$ref": "#/definitions/FileExtension"
                 }
             },
             "required": [
@@ -92,11 +98,11 @@
         "Arch": {
             "type": "string",
             "enum": [
-                "x86_64",
+                "aarch64",
+                "armv7l",
                 "i686",
                 "powerpc64le",
-                "aarch64",
-                "armv7l"
+                "x86_64"
             ],
             "title": "Arch"
         },

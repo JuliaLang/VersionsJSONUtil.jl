@@ -1,19 +1,52 @@
-import JSON
-import Test
+using JSON: JSON
+using StatsBase: StatsBase
+using Test: Test, @testset, @test, @test_skip
+using URIs: URIs, URI
 
-using Test: @testset, @test
+# We intentionally don't load VersionsJSONUtils in these tests.
+# This is because we want these tests to be as independent from VersionsJSONUtils as possible.
 
-const filename = only(ARGS)
-
-const dict = JSON.parsefile(filename)
-
-# This catches regressions like https://github.com/JuliaLang/VersionsJSONUtil.jl/pull/32#issuecomment-2617551478
-for (k_str, _) in pairs(dict)
-    k_ver = VersionNumber(k_str)
-    @test k_ver isa VersionNumber
+function check_usage()
+    scriptname = basename(@__FILE__)
+    if length(ARGS) != 2
+        usage_msg = "Usage: julia $scriptname \$filename \$test_type"
+        println(stderr, usage_msg)
+        println(stderr, "\$filename should be the filename of the versions.json file")
+        println(stderr, "\$test_type should be either partial or full")
+        println(stderr, "")
+        error(usage_msg)
+    end
+    return nothing
 end
 
+function get_cli_args()
+    check_usage()
+    filename = strip(ARGS[1])
+    if !isfile(filename)
+        error("File does not exist: $filename")
+    end
+    test_type_str = strip(ARGS[2])
+    if test_type_str == "partial"
+        test_type = :partial
+    elseif test_type_str == "full"
+        test_type = :full
+    else
+        error("Invalid value for test_type: $test_type. Valid values are: partial, full")
+    end
+    return (; filename, test_type)
+end
+
+const tarball_git_tree_hash_skiplist = [
+    # Corrupt gzip stream: `7z` reports a CRC failure for the embedded tarball.
+    URI("https://julialang-s3.julialang.org/bin/linux/x86/0.7/julia-0.7.0-alpha-linux-i686.tar.gz"),
+]
+
+check_usage()
+
 @testset "Post-build tests" begin
+    opts = get_cli_args()
+    dict = JSON.parsefile(opts.filename)
+
     # This is used in the "Make sure we found at least X files" testset below
     total_files_all_julia_versions = 0
 
@@ -23,6 +56,7 @@ end
         for (ver_str, ver_dict) in pairs(dict)
             ver = VersionNumber(ver_str)
 
+            # This catches regressions like https://github.com/JuliaLang/VersionsJSONUtil.jl/pull/32#issuecomment-2617551478
             @test ver isa VersionNumber
 
             @test ver_dict isa AbstractDict
@@ -48,6 +82,7 @@ end
 
             # This will be used in the "Tier 1" testset below
             found_platforms = []
+            found_urls = []
 
             @testset "Iterate over filedicts in the filedicts_array" begin
                 for filedict in filedicts_array
@@ -64,18 +99,63 @@ end
                         "triplet",
                         "url",
                         "version",
+
+                        # etag and last-modified are technically optional.
+                        # Because in theory we don't know what the upstream is, and if it
+                        # supports these headers.
+                        # But in practice, we know that the upstream is S3
+                        # and we know that it supports these two headers.
+                        # So for the purpose of these tests, we treat these as required
+                        "etag",
+                        "last-modified",
                     ]
                     optional_keys = [
                         "asc",
+                    ]
+
+                    # Technically, git-tree-sha1 and git-tree-sha256 are optional keys.
+                    # However, for the purposes of these tests, we treat them as required
+                    # for tar.gz files, and optional for other files.
+                    @test haskey(filedict, "extension")
+                    ext = filedict["extension"]
+                    treehash_keys = [
                         "git-tree-sha1",
                         "git-tree-sha256",
                     ]
+                    file_url = URI(filedict["url"])
+                    if ext == "tar.gz" && !(file_url in tarball_git_tree_hash_skiplist)
+                        append!(required_keys, treehash_keys)
+                    else
+                        append!(optional_keys, treehash_keys)
+                    end
+
                     allowed_keys = union(required_keys, optional_keys)
-                    @test required_keys ⊆ collect(keys(filedict))
-                    @test collect(keys(filedict)) ⊆ allowed_keys
+
+                    observed_keys_this_filedict = collect(keys(filedict))
+
+                    if !(required_keys ⊆ observed_keys_this_filedict)
+                        for k in required_keys
+                            if !(k in observed_keys_this_filedict)
+                                @info "Missing required key: $k"
+                            end
+                        end
+                    end
+                    if !(observed_keys_this_filedict ⊆ allowed_keys)
+                        for k in observed_keys_this_filedict
+                            if !(k in allowed_keys)
+                                @info "Key is present, but it shouldn't be: $k"
+                            end
+                        end
+                    end
+
+                    @test required_keys ⊆ observed_keys_this_filedict
+                    @test observed_keys_this_filedict ⊆ allowed_keys
 
                     # This will be used in the "Tier 1" testset below
                     push!(found_platforms, (filedict["triplet"], filedict["extension"]))
+
+                    # This will be used in the "No duplicate URLs" testset below
+                    push!(found_urls, filedict["url"])
 
                     @testset "arch field" begin
                         allowed_arches = [
@@ -118,12 +198,14 @@ end
                     end
                     @testset "sha256 field" begin
                         @test filedict["sha256"] isa AbstractString
-                        @test occursin(r"^[a-z0-9]*?$", filedict["sha256"])
+                        @test occursin(r"^[0-9a-f]*?$", filedict["sha256"])
                         @test length(filedict["sha256"]) == 64
+                        bytes = hex2bytes(filedict["sha256"])
+                        @test length(bytes) == 32
                     end
                     @testset "size field" begin
                         @test filedict["size"] isa Integer
-                        @test filedict["size"] >= 0 # TODO: Make this strictly >
+                        @test filedict["size"] > 0
                     end
                     @testset "triplet field" begin
                         allowed_triplets = [
@@ -152,10 +234,13 @@ end
                     @testset "url field" begin
                         @test filedict["url"] isa AbstractString
                         @test !isempty(strip(filedict["url"]))
-                        # TODO: Parse the url as a URIs.URI and do some checks on it
-                        # (1) Make sure it parses validly
-                        # (2) Make sure it is HTTP
-                        # (3) Make sure the domain is julialang-s3.julialang.org
+                        url_obj = URI(filedict["url"])
+                        @test url_obj isa URI
+                        @test url_obj.scheme == "https"
+                        allowed_hosts = [
+                            "julialang-s3.julialang.org",
+                        ]
+                        @test url_obj.host in allowed_hosts
                     end
                     @testset "version field" begin
                         @test VersionNumber(filedict["version"]) isa VersionNumber
@@ -167,6 +252,31 @@ end
                             @test filedict["asc"] isa AbstractString
                             @test startswith(filedict["asc"], "-----BEGIN PGP SIGNATURE-----")
                             @test endswith(chomp(filedict["asc"]), "-----END PGP SIGNATURE-----")
+                        end
+                    end
+                    @testset "etag field (optional)" begin
+                        if haskey(filedict, "etag")
+                            etag = lowercase(strip(filedict["etag"]))
+                            @test !isempty(etag)
+                            @test etag != "null"
+                            @test etag != "nothing"
+
+                            # Guaranteed to be ASCII, per spec
+                            # > Entity tag that uniquely represents the requested resource.
+                            # It is a string of ASCII characters placed between double quotes
+                            # Source: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/ETag
+                            @test isascii(etag)
+                        end
+                    end
+                    @testset "last-modified field (optional)" begin
+                        if haskey(filedict, "last-modified")
+                            @test !isempty(strip(filedict["last-modified"]))
+                            last_modified = lowercase(strip(filedict["last-modified"]))
+                            @test !isempty(last_modified)
+                            @test last_modified != "null"
+                            @test last_modified != "nothing"
+
+                            @test isascii(last_modified)
                         end
                     end
                 end # for filedict in filedicts_array
@@ -220,23 +330,37 @@ end
                 end
             end
 
+            @testset "No duplicate URLs" begin
+                for (url, count) in StatsBase.countmap(found_urls)
+                    if count != 1
+                        @info "URL $url appeared $count times"
+                    end
+                    @test count == 1
+                end
+            end
         end
     end
 
-    @testset "Make sure we found at least X files" begin
-        @test total_files_all_julia_versions >= 2190 # increase this value over time
-    end
+    @testset "Testset to make sure we found at least N versions and files" begin
+        skip_these_tests = opts.test_type == :partial
 
-    @testset "Make sure we found at least N Julia versions" begin
-        julia_versions_str = collect(keys(dict))
-        julia_versions = VersionNumber.(julia_versions_str)
-        unique!(julia_versions)
-        @test length(julia_versions) >= 193 # increase this value over time
+        @testset "Make sure we found at least N files" begin
+            # Increase this value over time:
+            @test total_files_all_julia_versions >= 2190 skip=skip_these_tests
+        end
 
-        julia_versions_v1 = filter(x -> x.major == 1, julia_versions)
-        @test length(julia_versions_v1) >= 140 # increase this value over time
+        @testset "Make sure we found at least N Julia versions" begin
+            julia_versions_str = collect(keys(dict))
+            julia_versions = VersionNumber.(julia_versions_str)
+            unique!(julia_versions)
+            julia_versions_v1 = filter(x -> x.major == 1, julia_versions)
+            julia_stable_versions_v1 = filter(x -> x.prerelease == (), julia_versions_v1)
 
-        julia_stable_versions_v1 = filter(x -> x.prerelease == (), julia_versions_v1)
-        @test length(julia_stable_versions_v1) >= 71 # increase this value over time
+            # Increase these values over time:
+            @test length(julia_versions) >= 193 skip=skip_these_tests
+            @test length(julia_versions_v1) >= 140 skip=skip_these_tests
+            @test length(julia_stable_versions_v1) >= 71 skip=skip_these_tests
+        end
+
     end
 end

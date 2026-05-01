@@ -1,0 +1,7 @@
+{
+  "name": "tests-check-schema",
+  "description": "This is a Node project for checking the versions.json against the schema.",
+  "dependencies": {
+    "ajv-cli": "^3.3.0"
+  }
+}

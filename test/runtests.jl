@@ -1,7 +1,9 @@
-using Pkg.BinaryPlatforms, JSON
-using VersionsJSONUtil
-import VersionsJSONUtil: WindowsPortable, WindowsTarball, MacOSTarball
-using Test
+using JSON: JSON
+using Pkg: Pkg
+using Test: Test, @testset, @test
+using Pkg.BinaryPlatforms: Linux, MacOS, Windows, FreeBSD
+using URIs: URIs, URI
+using VersionsJSONUtil: VersionsJSONUtil, WindowsPortable, WindowsTarball, MacOSTarball
 
 const download_urls = Dict(
     v"1.7.0-beta3" => Dict(
@@ -29,7 +31,7 @@ const download_urls = Dict(
 @testset "VersionsJSONUtil.jl" begin
     @testset "Download URLs for $v" for v in keys(download_urls)
         for (p, url) in download_urls[v]
-            @test VersionsJSONUtil.download_url(v, p) == url
+            @test VersionsJSONUtil.download_url(v, p) == URI(url)
         end
     end
 end
