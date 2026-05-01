@@ -94,8 +94,20 @@ jobs:
           path: versions.json
           if-no-files-found: error
 
+  schema-check:
+    # This CI job just makes sure that `schema.json` is a valid JSON schema.
+    # This CI job does NOT validate `versions.json` against `schema.json`.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          persist-credentials: false
+
+      - run: npx -p ajv-cli@3.3.0 ajv compile -s schema.json
+
   upload-to-s3:
-    needs: [package-tests, full-test]
+    needs: [package-tests, full-test, schema-check]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
