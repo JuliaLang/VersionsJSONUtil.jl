@@ -47,6 +47,12 @@
                 "git-tree-sha256": {
                     "type": "string"
                 },
+                "etag": {
+                    "type": "string"
+                },
+                "last-modified": {
+                    "type": "string"
+                },
                 "size": {
                     "type": "integer"
                 },
