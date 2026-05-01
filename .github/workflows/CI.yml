@@ -95,6 +95,8 @@ jobs:
           if-no-files-found: error
 
   schema-check:
+    # This CI job just makes sure that `schema.json` is a valid JSON schema.
+    # This CI job does NOT validate `versions.json` against `schema.json`.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
