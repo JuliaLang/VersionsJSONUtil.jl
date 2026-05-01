@@ -129,9 +129,9 @@ function is_stable(v::VersionNumber)
     return v.prerelease == () && v.build == ()
 end
 
-function tarball_git_tree_hash(; tarball_path::AbstractString, algorithm::AbstractString)
-    return open(io -> Tar.tree_hash(io; algorithm), `$(exe7z()) x $tarball_path -so`)
-end
+# function tarball_git_tree_hash(; tarball_path::AbstractString, algorithm::AbstractString)
+#     return open(io -> Tar.tree_hash(io; algorithm), `$(exe7z()) x $tarball_path -so`)
+# end
 
 # Get list of tags from the Julia repo
 function get_tags()
@@ -196,23 +196,23 @@ function main(out_path)
             end
             tarball_hash = String(read(tarball_hash_path))
 
-            if extension == "tar.gz" && !(url in tarball_git_tree_hash_skiplist)
-                tarball_git_tree_hashes = Dict{String, String}()
-                tree_hash_path_sha1 = hit_file_cache("$(filename).git-tree-sha1") do tree_hash_path
-                    open(tree_hash_path, "w") do hash_io
-                        write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha1"))
-                    end
-                end
-                tree_hash_path_sha256 = hit_file_cache("$(filename).git-tree-sha256") do tree_hash_path
-                    open(tree_hash_path, "w") do hash_io
-                        write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha256"))
-                    end
-                end
-                tarball_git_tree_hashes["git-tree-sha1"] = String(read(tree_hash_path_sha1))
-                tarball_git_tree_hashes["git-tree-sha256"] = String(read(tree_hash_path_sha256))
-            else
-                tarball_git_tree_hashes = nothing
-            end
+#             if extension == "tar.gz" && !(url in tarball_git_tree_hash_skiplist)
+#                 tarball_git_tree_hashes = Dict{String, String}()
+#                 tree_hash_path_sha1 = hit_file_cache("$(filename).git-tree-sha1") do tree_hash_path
+#                     open(tree_hash_path, "w") do hash_io
+#                         write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha1"))
+#                     end
+#                 end
+#                 tree_hash_path_sha256 = hit_file_cache("$(filename).git-tree-sha256") do tree_hash_path
+#                     open(tree_hash_path, "w") do hash_io
+#                         write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha256"))
+#                     end
+#                 end
+#                 tarball_git_tree_hashes["git-tree-sha1"] = String(read(tree_hash_path_sha1))
+#                 tarball_git_tree_hashes["git-tree-sha256"] = String(read(tree_hash_path_sha256))
+#             else
+#                 tarball_git_tree_hashes = nothing
+#             end
 
             # Initialize overall version key, if needed
             if !haskey(meta, version)
@@ -252,9 +252,9 @@ function main(out_path)
                 "extension" => extension,
                 "url" => url,
             )
-            if tarball_git_tree_hashes !== nothing
-                merge!(file_dict, tarball_git_tree_hashes)
-            end
+#             if tarball_git_tree_hashes !== nothing
+#                 merge!(file_dict, tarball_git_tree_hashes)
+#             end
             # Add in `.asc` signature content, if applicable
             if asc_signature !== nothing
                 file_dict["asc"] = asc_signature
