@@ -155,6 +155,34 @@
                             }
                         }
                     ]
+                },
+                {
+                    "anyOf": [
+                        {
+                            "properties": {
+                                "kind": {
+                                    "const": "installer"
+                                },
+                                "extension": {
+                                    "const": "exe"
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "kind": {
+                                    "const": "archive"
+                                },
+                                "extension": {
+                                    "enum": [
+                                        "dmg",
+                                        "tar.gz",
+                                        "zip"
+                                    ]
+                                }
+                            }
+                        }
+                    ]
                 }
             ],
             "title": "File"
