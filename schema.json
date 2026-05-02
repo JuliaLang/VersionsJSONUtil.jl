@@ -240,6 +240,72 @@
                             }
                         }
                     ]
+                },
+                {
+                    "anyOf": [
+                        {
+                            "properties": {
+                                "arch": {
+                                    "const": "x86_64"
+                                },
+                                "triplet": {
+                                    "enum": [
+                                        "x86_64-apple-darwin14",
+                                        "x86_64-w64-mingw32",
+                                        "x86_64-linux-gnu",
+                                        "x86_64-unknown-freebsd11.1",
+                                        "x86_64-linux-musl"
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "arch": {
+                                    "const": "i686"
+                                },
+                                "triplet": {
+                                    "enum": [
+                                        "i686-w64-mingw32",
+                                        "i686-linux-gnu"
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "arch": {
+                                    "const": "powerpc64le"
+                                },
+                                "triplet": {
+                                    "const": "powerpc64le-linux-gnu"
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "arch": {
+                                    "const": "aarch64"
+                                },
+                                "triplet": {
+                                    "enum": [
+                                        "aarch64-linux-gnu",
+                                        "aarch64-apple-darwin14"
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "arch": {
+                                    "const": "armv7l"
+                                },
+                                "triplet": {
+                                    "const": "armv7l-linux-gnueabihf"
+                                }
+                            }
+                        }
+                    ]
                 }
             ],
             "title": "File"
