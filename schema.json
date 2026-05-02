@@ -80,7 +80,7 @@
                             "pattern": "^https://"
                         },
                         {
-                            "pattern": "\\.(?:dmg|exe|gz|zip)$"
+                            "pattern": "\\.(?:dmg|exe|tar\\.gz|zip)$"
                         }
                     ]
                 },
