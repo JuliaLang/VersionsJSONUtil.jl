@@ -47,7 +47,8 @@
                     "pattern": "^[0-9A-Fa-f]{40}$"
                 },
                 "git-tree-sha256": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^[0-9A-Fa-f]{64}$"
                 },
                 "size": {
                     "type": "integer"
