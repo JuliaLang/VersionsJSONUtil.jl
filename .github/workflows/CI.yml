@@ -141,5 +141,7 @@ jobs:
         run: rm -fv versions.json
       - name: Download the current versions.json from S3
         run: curl -LO https://julialang-s3.julialang.org/bin/versions.json
+      - name: Validate versions.json against schema
+        run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
       - name: Run the post-build tests on the versions.json that we downloaded from S3
         run: julia --project test/more_tests.jl versions.json
