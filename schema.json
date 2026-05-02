@@ -1,6 +1,9 @@
 {
     "$schema": "http://json-schema.org/draft-06/schema#",
     "type": "object",
+    "propertyNames": {
+        "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-(?:alpha[0-9]*|beta[0-9]*|rc[0-9]+|pre\\.(?:alpha|beta)))?$"
+    },
     "additionalProperties": {
         "$ref": "#/definitions/WelcomeValue"
     },
