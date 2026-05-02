@@ -111,6 +111,52 @@
                 "url",
                 "version"
             ],
+            "allOf": [
+                {
+                    "anyOf": [
+                        {
+                            "properties": {
+                                "extension": {
+                                    "const": "dmg"
+                                },
+                                "url": {
+                                    "pattern": "\\.dmg$"
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "extension": {
+                                    "const": "exe"
+                                },
+                                "url": {
+                                    "pattern": "\\.exe$"
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "extension": {
+                                    "const": "tar.gz"
+                                },
+                                "url": {
+                                    "pattern": "\\.tar\\.gz$"
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "extension": {
+                                    "const": "zip"
+                                },
+                                "url": {
+                                    "pattern": "\\.zip$"
+                                }
+                            }
+                        }
+                    ]
+                }
+            ],
             "title": "File"
         },
         "Arch": {
