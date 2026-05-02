@@ -183,6 +183,63 @@
                             }
                         }
                     ]
+                },
+                {
+                    "anyOf": [
+                        {
+                            "properties": {
+                                "os": {
+                                    "const": "mac"
+                                },
+                                "triplet": {
+                                    "enum": [
+                                        "x86_64-apple-darwin14",
+                                        "aarch64-apple-darwin14"
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "os": {
+                                    "const": "winnt"
+                                },
+                                "triplet": {
+                                    "enum": [
+                                        "x86_64-w64-mingw32",
+                                        "i686-w64-mingw32"
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "os": {
+                                    "const": "linux"
+                                },
+                                "triplet": {
+                                    "enum": [
+                                        "x86_64-linux-gnu",
+                                        "i686-linux-gnu",
+                                        "powerpc64le-linux-gnu",
+                                        "aarch64-linux-gnu",
+                                        "armv7l-linux-gnueabihf",
+                                        "x86_64-linux-musl"
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            "properties": {
+                                "os": {
+                                    "const": "freebsd"
+                                },
+                                "triplet": {
+                                    "const": "x86_64-unknown-freebsd11.1"
+                                }
+                            }
+                        }
+                    ]
                 }
             ],
             "title": "File"
