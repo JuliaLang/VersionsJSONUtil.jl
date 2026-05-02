@@ -85,7 +85,8 @@
                     ]
                 },
                 "asc": {
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^-----BEGIN PGP SIGNATURE-----\\n(?:[A-Za-z0-9-]+: [^\\n]*\\n)*\\n(?:[A-Za-z0-9+/]{1,76}=*\\n)+=[A-Za-z0-9+/]{4}\\n-----END PGP SIGNATURE-----\\n?$"
                 },
                 "extension": {
                     "$ref": "#/definitions/FileExtension"
