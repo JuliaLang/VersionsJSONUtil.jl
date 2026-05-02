@@ -83,7 +83,7 @@
                             "pattern": "^https://\\S+$"
                         },
                         {
-                            "pattern": "\\.(?:dmg|exe|tar\\.gz|zip)$"
+                            "pattern": "/[^/?#]+\\.(?:dmg|exe|tar\\.gz|zip)$"
                         }
                     ]
                 },
