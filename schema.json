@@ -72,7 +72,7 @@
                     "qt-uri-extensions": [
                         ".dmg",
                         ".exe",
-                        ".gz",
+                        ".tar.gz",
                         ".zip"
                     ],
                     "allOf": [
