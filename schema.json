@@ -67,6 +67,14 @@
                         ".exe",
                         ".gz",
                         ".zip"
+                    ],
+                    "allOf": [
+                        {
+                            "pattern": "^https://"
+                        },
+                        {
+                            "pattern": "\\.(?:dmg|exe|gz|zip)$"
+                        }
                     ]
                 },
                 "asc": {
