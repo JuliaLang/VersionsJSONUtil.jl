@@ -80,6 +80,9 @@
                             "pattern": "^https://[^/?#]+/"
                         },
                         {
+                            "pattern": "^https://\\S+$"
+                        },
+                        {
                             "pattern": "\\.(?:dmg|exe|tar\\.gz|zip)$"
                         }
                     ]
