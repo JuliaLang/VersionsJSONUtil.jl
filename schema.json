@@ -77,7 +77,7 @@
                     ],
                     "allOf": [
                         {
-                            "pattern": "^https://"
+                            "pattern": "^https://[^/?#]+/"
                         },
                         {
                             "pattern": "\\.(?:dmg|exe|tar\\.gz|zip)$"
