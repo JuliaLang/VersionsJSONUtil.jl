@@ -12,6 +12,7 @@ Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 SHA = "ea8e919c-243c-51af-8825-aaa63cd721ce"
 Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
+URIs = "5c2747f8-b7ea-4ff2-ba2e-563bfd36b1d4"
 WebCacheUtilities = "0c1c26de-fc5f-47ff-87a8-a157289a9bac"
 
 [compat]
