@@ -22,6 +22,7 @@ This allows us to check if changes might break downstream tooling.
 
 - [abelsiqueira/jill](https://github.com/abelsiqueira/jill): A Julia installer written in Bash.
 - [johnnychen94/jill.py](https://github.com/johnnychen94/jill.py): A Julia installer written in Python.
+- [nhz2/install-julia-linux](https://github.com/nhz2/install-julia-linux): A Julia installer written in Shell.
 - [julia-actions/setup-julia](https://github.com/julia-actions/setup-julia): Installs Julia in GitHub Actions CI jobs.
 - [JuliaCI/julia-buildkite-plugin](https://github.com/JuliaCI/julia-buildkite-plugin): Buildkite plugin to install Julia for use in a pipeline. This plugin is used in Base Julia CI.
 - [JuliaCI/julia-snap](https://github.com/JuliaCI/julia-snap): Snap setup for Julia.
