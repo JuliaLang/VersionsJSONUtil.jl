@@ -2,6 +2,16 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      full-rebuild:
+        description: "Ignore the deployed versions.json and rebuild everything from scratch"
+        type: boolean
+        default: false
+  schedule:
+    # Monthly full-rebuild backstop: re-downloads and re-hashes everything, so any
+    # drift the incremental path cannot detect (a seed entry whose recorded hash is
+    # wrong while its ETag still matches) is bounded to a month.
+    - cron: "30 3 3 * *"
   push:
     branches:
       - main
@@ -75,6 +85,15 @@ jobs:
 
       - run: rm -f versions.json
 
+      - name: Download the deployed versions.json to build on top of
+        # Scheduled runs (and the manual full-rebuild switch) deliberately skip the
+        # seed and rebuild from scratch. A missing/broken seed must never fail the
+        # build: without a seed we simply do a full rebuild.
+        if: github.event_name != 'schedule' && inputs.full-rebuild != true
+        run: |
+          curl -fLO https://julialang-s3.julialang.org/bin/versions.json \
+            || { echo "::warning::deployed versions.json unavailable; doing a full rebuild"; rm -f versions.json; }
+
       - name: Build versions.json
         run: |
           using VersionsJSONUtil
@@ -96,7 +115,7 @@ jobs:
 
   upload-to-s3:
     needs: [package-tests, full-test]
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -117,7 +136,12 @@ jobs:
         run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
 
       - name: Purge cache
-        run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions.json
+        # As of 2026-08 the Fastly service rejects unauthenticated URL purges (401),
+        # so this surfaces a warning annotation instead of passing silently; the
+        # deployed file is then served stale for up to its cache TTL.
+        run: |
+          curl -fsS -X PURGE https://julialang-s3.julialang.org/bin/versions.json \
+            || echo "::warning::Fastly purge of versions.json failed; it will be served stale until the cached copy expires"
 
   test-current-s3:
     # We intentionally do not make this job a "required status check" on PRs.

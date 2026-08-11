@@ -143,17 +143,142 @@ function get_tags()
     JSON.parse(String(read(tags_json_path)))
 end
 
+# ------------------------------------------------------------------------------------------
+# Incremental rebuilds.
+#
+# We seed from the currently deployed versions.json and only probe what is missing from it:
+# an entry already in the seed is carried over (after a cheap HEAD cross-check of its
+# recorded size against Content-Length), so a normal run downloads only newly released
+# files. The published versions.json format is completely unchanged, and there is no state
+# beyond the deployed file itself. Replacing the bytes behind an already-published URL
+# without changing their size is the one change this cannot detect; the scheduled full
+# rebuild (see CI.yml) re-downloads and re-hashes everything to bound that.
+
+function load_seed(out_path)
+    meta = Dict{VersionNumber, Any}()
+    if isfile(out_path)
+        for (k, v) in JSON.parsefile(out_path)
+            ver = vnum_maybe(k)
+            ver === nothing && continue
+            meta[ver] = v
+        end
+        @info "Seeded $(length(meta)) versions from $(out_path)"
+    else
+        @info "No $(out_path) found; building from scratch"
+    end
+    return meta
+end
+
+function checkpoint(out_path, meta)
+    open(out_path, "w") do io
+        JSON.print(io, meta, 2)
+    end
+end
+
+function head_url(url)
+    response = HTTP.head(url; status_exception = false)
+    content_length = tryparse(Int, String(strip(HTTP.header(response, "Content-Length"))))
+    return (;
+        status = Int(response.status),
+        content_length = something(content_length, 0),
+    )
+end
+
+# Pure policy for a HEAD response.
+#   :proceed          - the URL is live; go on to the completeness/size checks
+#   :keep_existing    - the URL is in the seed versions.json but the CDN says it is gone.
+#                       A published release file should never vanish, and this CDN is known
+#                       to serve stale per-POP 404s -- so keep the existing entry and warn,
+#                       rather than deleting a released binary from versions.json.
+#   :skip_nonexistent - a 404 for a URL we never knew: this version/platform combination
+#                       simply doesn't exist
+#   :skip_transient   - any other status (5xx, ...): warn and retry next run
+function action_for_head_status(status::Integer, have_existing_entry::Bool)
+    if status == 200
+        return :proceed
+    elseif have_existing_entry
+        return :keep_existing
+    elseif status == 404
+        return :skip_nonexistent
+    else
+        return :skip_transient
+    end
+end
+
+# Cheap staleness cross-check for a seeded entry, using only data already in
+# versions.json: if the live Content-Length disagrees with the recorded size, the bytes
+# behind the URL have changed and the recorded hashes are stale. An absent Content-Length
+# cannot be checked; trust the seed then (the scheduled full rebuild is the backstop).
+function entry_size_matches(file_dict, content_length::Integer; url = "")
+    content_length > 0 || return true
+    if file_dict["size"] != content_length
+        @warn "Size has changed from $(file_dict["size"]) to $(content_length); the published file was replaced" url
+        return false
+    end
+    return true
+end
+
+# Does a (seeded) filedict have every field we require, so it can be carried over?
+function filedict_is_complete(file_dict, url)
+    required = ["arch", "extension", "kind", "os", "sha256", "size", "triplet", "url", "version"]
+    all(k -> haskey(file_dict, k), required) || return false
+    # tarballs additionally need the git tree hashes (except the skiplisted corrupt one,
+    # which can never have them and would otherwise be re-downloaded every run)
+    if endswith(url, ".tar.gz") && !(url in tarball_git_tree_hash_skiplist)
+        haskey(file_dict, "git-tree-sha1") || return false
+        haskey(file_dict, "git-tree-sha256") || return false
+    end
+    return true
+end
+
+function find_filedict(meta, version, url)
+    haskey(meta, version) || return nothing
+    for file_dict in meta[version]["files"]
+        file_dict["url"] == url && return file_dict
+    end
+    return nothing
+end
+
+function delete_filedicts_for_url!(meta, version, url)
+    # Remove any stale entry so a re-download can't produce duplicates
+    haskey(meta, version) || return nothing
+    filter!(file_dict -> file_dict["url"] != url, meta[version]["files"])
+    return nothing
+end
+
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
 
-    meta = Dict()
+    meta = load_seed(out_path)
     number_urls_tried = 0
     number_urls_success = 0
+    number_carried_over = 0
     for version in tag_versions
         for platform in julia_platforms
             url = download_url(version, platform)
             filename = basename(url)
+
+            existing = find_filedict(meta, version, url)
+            head = head_url(url)
+            action = action_for_head_status(head.status, existing !== nothing)
+            if action == :keep_existing
+                @warn "HEAD returned $(head.status) for previously-published $(url); keeping the existing entry"
+                number_carried_over += 1
+                continue
+            elseif action == :skip_nonexistent
+                continue
+            elseif action == :skip_transient
+                @warn "HEAD returned $(head.status) for $(url); skipping it for this run"
+                continue
+            end
+
+            if existing !== nothing && filedict_is_complete(existing, url) &&
+                    entry_size_matches(existing, head.content_length; url)
+                number_carried_over += 1
+                continue
+            end
+            delete_filedicts_for_url!(meta, version, url)
 
             # Download this URL to a local file
             number_urls_tried += 1
@@ -265,15 +390,15 @@ function main(out_path)
             push!(meta[version]["files"], file_dict)
 
             # Write out new versions of our versions.json as we go
-            open(out_path, "w") do io
-                JSON.print(io, meta, 2)
-            end
+            checkpoint(out_path, meta)
 
             # Delete downloaded file
             rm(filepath)
         end
     end
-    @info "Tried $(number_urls_tried) versions, successfully downloaded $(number_urls_success)"
+    # Always write the output, even if nothing needed re-downloading
+    checkpoint(out_path, meta)
+    @info "Tried $(number_urls_tried) URLs, successfully downloaded $(number_urls_success). Carried over $(number_carried_over) up-to-date entries."
 end
 
 end # module
