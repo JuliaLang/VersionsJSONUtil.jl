@@ -4,6 +4,7 @@ using HTTP, JSON, Pkg.BinaryPlatforms, WebCacheUtilities, SHA, Lazy
 using Tar: Tar
 import Pkg.BinaryPlatforms: triplet, arch
 import Pkg.PlatformEngines: exe7z
+using URIs: URIs, URI
 
 "Wrapper types to define three jlext methods for portable, tarball and installer Windows"
 struct WindowsPortable
@@ -143,6 +144,31 @@ function get_tags()
     JSON.parse(String(read(tags_json_path)))
 end
 
+##### --------------------------------------------------------------------------------------
+##### Get ETag and Last-Modified, so we know if we need to re-download and re-checksum files
+
+Base.@kwdef struct HeadInfo
+    url::URI
+    etag::Union{String, Nothing}
+    last_modified::Union{String, Nothing}
+end
+
+function HeadInfo(url)
+    local response = nothing
+    try
+        response = HTTP.head(url)
+    catch
+        error("Encountered error when making HEAD request to URL: $url")
+    end
+    etag = HTTP.header(response, "ETag", nothing)
+    etag === nothing && @warn "ETag not provided in response from $url"
+    last_modified = HTTP.header(response, "Last-Modified", nothing)
+    last_modified === nothing && @warn "Last-Modified not provided in response from $url"
+    return HeadInfo(; url=URI(url), etag, last_modified)
+end
+
+##### --------------------------------------------------------------------------------------
+
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
@@ -240,6 +266,8 @@ function main(out_path)
 
             end
 
+            headinfo = HeadInfo(url)
+
             # Build up metadata about this file
             file_dict = Dict(
                 "triplet" => triplet(platform),
@@ -258,6 +286,13 @@ function main(out_path)
             # Add in `.asc` signature content, if applicable
             if asc_signature !== nothing
                 file_dict["asc"] = asc_signature
+            end
+
+            if !isnothing(headinfo.etag)
+                file_dict["etag"] = headinfo.etag
+            end
+            if !isnothing(headinfo.last_modified)
+                file_dict["last-modified"] = headinfo.last_modified
             end
 
             # Right now, all we have are archives, but let's be forward-thinking
