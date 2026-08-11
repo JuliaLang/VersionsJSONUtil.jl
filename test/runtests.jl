@@ -1,6 +1,6 @@
 using JSON: JSON
 using Pkg: Pkg
-using Test: Test, @testset, @test
+using Test: Test, @testset, @test, @test_throws
 using Pkg.BinaryPlatforms: Linux, MacOS, Windows, FreeBSD
 using URIs: URIs, URI
 using VersionsJSONUtil: VersionsJSONUtil, WindowsPortable, WindowsTarball, MacOSTarball
@@ -33,6 +33,23 @@ const download_urls = Dict(
         for (p, url) in download_urls[v]
             @test VersionsJSONUtil.download_url(v, p) == URI(url)
         end
+    end
+
+    @testset "restrict_tag_versions" begin
+        restrict = VersionsJSONUtil.restrict_tag_versions
+        min_seed = VersionsJSONUtil.min_seed_versions_for_restricted_build
+        tags = [v"1.13.0-rc1", v"1.13.0-rc2", v"1.12.6"]
+        # No restriction requested: full list, regardless of seed
+        @test restrict(tags, nothing, 0) === tags
+        # Restriction with a healthy seed: only the requested versions
+        @test restrict(tags, [v"1.13.0-rc2"], min_seed) == [v"1.13.0-rc2"]
+        @test restrict(tags, ["1.13.0-rc2", "1.12.6"], min_seed) == [v"1.12.6", v"1.13.0-rc2"]
+        # A version that is not a real tag is refused
+        @test_throws ErrorException restrict(tags, [v"1.13.0-rc3"], min_seed)
+        # A restricted build without a substantial seed would gut versions.json
+        @test_throws ErrorException restrict(tags, [v"1.13.0-rc2"], min_seed - 1)
+        @test_throws ErrorException restrict(tags, [v"1.13.0-rc2"], 0)
+        @test_throws ErrorException restrict(tags, VersionNumber[], min_seed)
     end
 
     @testset "action_for_head_status" begin

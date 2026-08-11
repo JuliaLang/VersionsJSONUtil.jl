@@ -496,14 +496,50 @@ end
 ##### --------------------------------------------------------------------------------------
 ##### The main() function, which is the entrypoint into building versions.json
 
-function main(output_directory::AbstractString)
+function main(output_directory::AbstractString; only_versions = nothing)
     cfg = Config(output_directory)
-    return main(cfg)
+    return main(cfg; only_versions)
 end
 
-function main(cfg::Config)
+function main(cfg::Config; only_versions = nothing)
+    if isnothing(only_versions)
+        # e.g. VERSIONS_JSON_ONLY_VERSIONS="1.13.0-rc2" (comma/space separated for several)
+        env = strip(get(ENV, "VERSIONS_JSON_ONLY_VERSIONS", ""))
+        if !isempty(env)
+            only_versions = VersionNumber.(split(env, r"[,\s]+"; keepempty = false))
+        end
+    end
     content = OutputJsonContent(cfg)
-    return main!(content, cfg)
+    return main!(content, cfg; only_versions)
+end
+
+# A restricted build only probes the requested versions and carries every other
+# entry over from the seed verbatim. Refuse to run one without a substantial
+# seed: the requested versions would otherwise be the ONLY content of the
+# published versions.json.
+const min_seed_versions_for_restricted_build = 100
+
+function restrict_tag_versions(
+    tag_versions::Vector{VersionNumber},
+    only_versions,
+    num_seed_versions::Int,
+)
+    isnothing(only_versions) && return tag_versions
+    only = sort(unique(VersionNumber.(only_versions)))
+    isempty(only) && error("only_versions was given, but is empty")
+    for v in only
+        if !(v in tag_versions)
+            error("Requested version $v is not a tag of JuliaLang/julia")
+        end
+    end
+    if num_seed_versions < min_seed_versions_for_restricted_build
+        error(
+            "Refusing a restricted build on top of a seed with only " *
+            "$(num_seed_versions) versions (need >= $(min_seed_versions_for_restricted_build)): " *
+            "the output would be missing almost every Julia version"
+        )
+    end
+    return only
 end
 
 # If we ever end up adding a tag to the Julia repo that's not parseable as a VersionNumber,
@@ -512,7 +548,7 @@ end
 # And then we'll skip those tags when building versions.json
 const tag_skiplist = String[]
 
-function main!(content::OutputJsonContent, cfg::Config)
+function main!(content::OutputJsonContent, cfg::Config; only_versions = nothing)
     tags = get_tags()
     filter!(t -> !(basename(t["ref"]) in tag_skiplist), tags)
     tag_versions = filter(x -> !isnothing(x), [VersionNumber(basename(t["ref"])) for t in tags])
@@ -526,6 +562,13 @@ function main!(content::OutputJsonContent, cfg::Config)
     @info "Oldest tag: $(first(tag_versions))"
     @info "Newest tag: $(last(tag_versions))"
     assert_sanity_check_tag_number(tag_versions)
+
+    # The sanity checks above always run against the full tag list; only the
+    # probing below is restricted.
+    tag_versions = restrict_tag_versions(tag_versions, only_versions, length(content.versions_json))
+    if !isnothing(only_versions)
+        @info "Restricted build: only probing $(join(tag_versions, ", ")); all other versions are carried over from the seed"
+    end
 
     meta = content.versions_json
     internal_json = content.internal_json

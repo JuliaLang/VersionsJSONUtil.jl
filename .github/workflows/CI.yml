@@ -3,6 +3,10 @@ name: CI
 on:
   workflow_dispatch:
     inputs:
+      only-versions:
+        description: "Only probe these versions (comma/space separated, e.g. 1.13.0-rc2); everything else is carried over from the deployed versions.json. The fast path for adding a new release."
+        type: string
+        default: ""
       full-rebuild:
         description: "Ignore the deployed versions.json and rebuild everything from scratch"
         type: boolean
@@ -96,6 +100,9 @@ jobs:
         run: make build
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Used to authenticate to GitHub API to get list of tags
+          # Restricted builds refuse to run without a seed, so this composes safely
+          # with (i.e. errors out on) full-rebuild / scheduled runs.
+          VERSIONS_JSON_ONLY_VERSIONS: ${{ inputs.only-versions }}
       - name: Run the post-build tests
         run: make test-full
       - name: Install NPM deps
