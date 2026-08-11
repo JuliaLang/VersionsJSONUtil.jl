@@ -53,14 +53,34 @@ const download_urls = Dict(
         @test action(0, false) == :skip_transient
     end
 
-    @testset "entry_size_matches" begin
-        matches = VersionsJSONUtil.entry_size_matches
+    @testset "entry_matches_head" begin
+        matches = VersionsJSONUtil.entry_matches_head
+        head(; content_length = -1, etag = nothing, last_modified = nothing) =
+            (; status = 200, content_length, etag, last_modified)
         entry = Dict("size" => 1234)
-        @test matches(entry, 1234)
+        @test matches(entry, head(content_length = 1234))
         # A different Content-Length means the published file was replaced
-        @test !matches(entry, 1235)
-        # An absent Content-Length cannot be checked; trust the seed
-        @test matches(entry, 0)
+        @test !matches(entry, head(content_length = 1235))
+        # content_length = -1 means the header was absent; it cannot be checked
+        @test matches(entry, head())
+        # ... but a genuine zero-length response is a real mismatch
+        @test !matches(entry, head(content_length = 0))
+        # An entry without `etag` is reused on size alone (incremental adoption)
+        @test matches(entry, head(content_length = 1234, etag = "\"abc\""))
+        etag_entry = Dict("size" => 1234, "etag" => "\"abc\"")
+        @test matches(etag_entry, head(content_length = 1234, etag = "\"abc\""))
+        @test !matches(etag_entry, head(content_length = 1234, etag = "\"xyz\""))
+        # An absent ETag header cannot be checked
+        @test matches(etag_entry, head(content_length = 1234))
+        # An entry without `last-modified` is reused once size and etag match
+        @test matches(etag_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
+        full_entry = Dict("size" => 1234, "etag" => "\"abc\"", "last-modified" => "Mon, 01 Jan 2024 00:00:00 GMT")
+        @test matches(full_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
+        @test !matches(full_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Tue, 02 Jan 2024 00:00:00 GMT"))
+        # An etag mismatch wins over a size match even when last-modified would match
+        @test !matches(full_entry, head(content_length = 1234, etag = "\"xyz\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
+        # Absent Last-Modified header cannot be checked
+        @test matches(full_entry, head(content_length = 1234, etag = "\"abc\""))
     end
 
     @testset "filedict_is_complete" begin

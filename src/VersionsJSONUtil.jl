@@ -148,11 +148,11 @@ end
 #
 # We seed from the currently deployed versions.json and only probe what is missing from it:
 # an entry already in the seed is carried over (after a cheap HEAD cross-check of its
-# recorded size against Content-Length), so a normal run downloads only newly released
-# files. The published versions.json format is completely unchanged, and there is no state
-# beyond the deployed file itself. Replacing the bytes behind an already-published URL
-# without changing their size is the one change this cannot detect; the scheduled full
-# rebuild (see CI.yml) re-downloads and re-hashes everything to bound that.
+# recorded size/etag/last-modified against the live headers), so a normal run downloads
+# only newly released files. There is no state beyond the deployed file itself. New
+# entries additionally record `etag` and `last-modified`, so old entries that predate
+# those fields are checked by size alone until they are refreshed; a manual full rebuild
+# (see the workflow_dispatch input in CI.yml) re-downloads and re-hashes everything.
 
 function load_seed(out_path)
     meta = Dict{VersionNumber, Any}()
@@ -186,12 +186,17 @@ function head_url(url)
         # A failed request (DNS, connection reset, ...) must not kill the run;
         # status 0 makes the policy below treat it as transient
         @warn "HEAD request failed for $(url)" exception=(ex,)
-        return (; status = 0, content_length = 0)
+        return (; status = 0, content_length = -1, etag = nothing, last_modified = nothing)
     end
+    # -1 = header absent/unparsable, so a genuine Content-Length of 0 stays distinguishable
     content_length = tryparse(Int, String(strip(HTTP.header(response, "Content-Length"))))
+    etag = String(strip(HTTP.header(response, "ETag")))
+    last_modified = String(strip(HTTP.header(response, "Last-Modified")))
     return (;
         status = Int(response.status),
-        content_length = something(content_length, 0),
+        content_length = something(content_length, -1),
+        etag = isempty(etag) ? nothing : etag,
+        last_modified = isempty(last_modified) ? nothing : last_modified,
     )
 end
 
@@ -216,14 +221,25 @@ function action_for_head_status(status::Integer, have_existing_entry::Bool)
     end
 end
 
-# Cheap staleness cross-check for a seeded entry, using only data already in
-# versions.json: if the live Content-Length disagrees with the recorded size, the bytes
-# behind the URL have changed and the recorded hashes are stale. An absent Content-Length
-# cannot be checked; trust the seed then (the scheduled full rebuild is the backstop).
-function entry_size_matches(file_dict, content_length::Integer; url = "")
-    content_length > 0 || return true
-    if file_dict["size"] != content_length
-        @warn "Size has changed from $(file_dict["size"]) to $(content_length); the published file was replaced" url
+# Cheap staleness cross-check for a seeded entry against the live HEAD response: a
+# recorded field disagreeing with its header means the bytes behind the URL changed and
+# the recorded hashes are stale. Checked in order: size vs Content-Length, etag vs ETag,
+# last-modified vs Last-Modified. A field absent from the entry ends the cascade with a
+# reuse (old entries gain `etag`/`last-modified` incrementally); a header the server
+# didn't send simply can't be checked.
+function entry_matches_head(file_dict, head; url = "")
+    if head.content_length >= 0 && file_dict["size"] != head.content_length
+        @warn "Size has changed from $(file_dict["size"]) to $(head.content_length); the published file was replaced" url
+        return false
+    end
+    haskey(file_dict, "etag") || return true
+    if head.etag !== nothing && file_dict["etag"] != head.etag
+        @warn "ETag has changed from $(file_dict["etag"]) to $(head.etag); the published file was replaced" url
+        return false
+    end
+    haskey(file_dict, "last-modified") || return true
+    if head.last_modified !== nothing && file_dict["last-modified"] != head.last_modified
+        @warn "Last-Modified has changed from $(file_dict["last-modified"]) to $(head.last_modified); the published file was replaced" url
         return false
     end
     return true
@@ -285,7 +301,7 @@ function main(out_path)
             end
 
             if existing !== nothing && filedict_is_complete(existing, url) &&
-                    entry_size_matches(existing, head.content_length; url)
+                    entry_matches_head(existing, head; url)
                 number_carried_over += 1
                 continue
             end
@@ -388,6 +404,13 @@ function main(out_path)
                 "extension" => extension,
                 "url" => url,
             )
+            # Record the live headers so future incremental runs can cross-check them
+            if head.etag !== nothing
+                file_dict["etag"] = head.etag
+            end
+            if head.last_modified !== nothing
+                file_dict["last-modified"] = head.last_modified
+            end
             if tarball_git_tree_hashes !== nothing
                 merge!(file_dict, tarball_git_tree_hashes)
             end
