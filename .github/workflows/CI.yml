@@ -81,9 +81,7 @@ jobs:
       - run: rm -f versions.json
 
       - name: Download the deployed versions.json to build on top of
-        # The manual full-rebuild switch deliberately skips the seed and rebuilds
-        # from scratch. A missing/broken seed must never fail the build: without a
-        # seed we simply do a full rebuild.
+        # a missing/broken seed must not fail the build; we just rebuild from scratch
         if: inputs.full-rebuild != true
         run: |
           curl -fLO https://julialang-s3.julialang.org/bin/versions.json \
@@ -131,9 +129,7 @@ jobs:
         run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
 
       - name: Purge cache
-        # As of 2026-08 the Fastly service rejects unauthenticated URL purges (401),
-        # so this surfaces a warning annotation instead of passing silently; the
-        # deployed file is then served stale for up to its cache TTL.
+        # Fastly currently 401s unauthenticated purges; warn rather than fail silently
         run: |
           curl -fsS -X PURGE https://julialang-s3.julialang.org/bin/versions.json \
             || echo "::warning::Fastly purge of versions.json failed; it will be served stale until the cached copy expires"

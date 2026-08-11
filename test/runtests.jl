@@ -35,20 +35,16 @@ const download_urls = Dict(
 
     @testset "action_for_head_status" begin
         action = VersionsJSONUtil.action_for_head_status
-        # A live URL proceeds to the completeness/staleness checks
         @test action(200, false) == :proceed
         @test action(200, true) == :proceed
-        # A URL that is already in versions.json must never be deleted or marked
-        # nonexistent because of a non-200 HEAD (the CDN is known to serve stale
-        # per-POP 404s): keep the existing entry
+        # never drop an already-published URL on a non-200 (the CDN serves stale 404s)
         @test action(404, true) == :keep_existing
         @test action(500, true) == :keep_existing
-        # A 404 for a URL we never knew: that version/platform simply doesn't exist
+        # a 404 for an unknown URL: that version/platform doesn't exist
         @test action(404, false) == :skip_nonexistent
-        # Any other status for an unknown URL is transient: retry next run
         @test action(500, false) == :skip_transient
         @test action(503, false) == :skip_transient
-        # status 0 = the HEAD request itself failed (DNS, connection reset, ...)
+        # status 0 = the HEAD request itself failed
         @test action(0, true) == :keep_existing
         @test action(0, false) == :skip_transient
     end
@@ -59,27 +55,25 @@ const download_urls = Dict(
             (; status = 200, content_length, etag, last_modified)
         entry = Dict("size" => 1234)
         @test matches(entry, head(content_length = 1234))
-        # A different Content-Length means the published file was replaced
         @test !matches(entry, head(content_length = 1235))
-        # content_length = -1 means the header was absent; it cannot be checked
+        # -1 = Content-Length header absent, can't check
         @test matches(entry, head())
-        # ... but a genuine zero-length response is a real mismatch
+        # but a real zero-length response is a mismatch
         @test !matches(entry, head(content_length = 0))
-        # An entry without `etag` is reused on size alone (incremental adoption)
+        # entry without etag: size alone decides
         @test matches(entry, head(content_length = 1234, etag = "\"abc\""))
         etag_entry = Dict("size" => 1234, "etag" => "\"abc\"")
         @test matches(etag_entry, head(content_length = 1234, etag = "\"abc\""))
         @test !matches(etag_entry, head(content_length = 1234, etag = "\"xyz\""))
-        # An absent ETag header cannot be checked
+        # absent ETag header can't be checked
         @test matches(etag_entry, head(content_length = 1234))
-        # An entry without `last-modified` is reused once size and etag match
+        # entry without last-modified: reused once size and etag match
         @test matches(etag_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
         full_entry = Dict("size" => 1234, "etag" => "\"abc\"", "last-modified" => "Mon, 01 Jan 2024 00:00:00 GMT")
         @test matches(full_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
         @test !matches(full_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Tue, 02 Jan 2024 00:00:00 GMT"))
-        # An etag mismatch wins over a size match even when last-modified would match
         @test !matches(full_entry, head(content_length = 1234, etag = "\"xyz\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
-        # Absent Last-Modified header cannot be checked
+        # absent Last-Modified header can't be checked
         @test matches(full_entry, head(content_length = 1234, etag = "\"abc\""))
     end
 

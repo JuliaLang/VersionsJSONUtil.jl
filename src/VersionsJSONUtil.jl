@@ -144,15 +144,10 @@ function get_tags()
 end
 
 # ------------------------------------------------------------------------------------------
-# Incremental rebuilds.
-#
-# We seed from the currently deployed versions.json and only probe what is missing from it:
-# an entry already in the seed is carried over (after a cheap HEAD cross-check of its
-# recorded size/etag/last-modified against the live headers), so a normal run downloads
-# only newly released files. There is no state beyond the deployed file itself. New
-# entries additionally record `etag` and `last-modified`, so old entries that predate
-# those fields are checked by size alone until they are refreshed; a manual full rebuild
-# (see the workflow_dispatch input in CI.yml) re-downloads and re-hashes everything.
+# Incremental rebuilds: seed from the deployed versions.json and only download what's
+# missing. A seeded entry is kept after a HEAD cross-check of its recorded
+# size/etag/last-modified against the live headers. The full-rebuild input in CI.yml
+# re-downloads everything from scratch.
 
 function load_seed(out_path)
     meta = Dict{VersionNumber, Any}()
@@ -177,18 +172,15 @@ end
 
 function head_url(url)
     response = try
-        # Finite timeouts are essential: HTTP.jl's default read timeout is
-        # infinite, so a single black-holed connection would otherwise hang
-        # the whole build
+        # HTTP.jl's default read timeout is infinite; one hung connection would stall the build
         HTTP.head(url; status_exception = false, connect_timeout = 15, readtimeout = 30, retries = 2)
     catch ex
         isa(ex, InterruptException) && rethrow(ex)
-        # A failed request (DNS, connection reset, ...) must not kill the run;
-        # status 0 makes the policy below treat it as transient
+        # a failed request (DNS, reset, ...) must not kill the run; status 0 = transient
         @warn "HEAD request failed for $(url)" exception=(ex,)
         return (; status = 0, content_length = -1, etag = nothing, last_modified = nothing)
     end
-    # -1 = header absent/unparsable, so a genuine Content-Length of 0 stays distinguishable
+    # -1 = header missing/unparsable (a real Content-Length of 0 stays distinguishable)
     content_length = tryparse(Int, String(strip(HTTP.header(response, "Content-Length"))))
     etag = String(strip(HTTP.header(response, "ETag")))
     last_modified = String(strip(HTTP.header(response, "Last-Modified")))
@@ -200,15 +192,10 @@ function head_url(url)
     )
 end
 
-# Pure policy for a HEAD response.
-#   :proceed          - the URL is live; go on to the completeness/size checks
-#   :keep_existing    - the URL is in the seed versions.json but the CDN says it is gone.
-#                       A published release file should never vanish, and this CDN is known
-#                       to serve stale per-POP 404s -- so keep the existing entry and warn,
-#                       rather than deleting a released binary from versions.json.
-#   :skip_nonexistent - a 404 for a URL we never knew: this version/platform combination
-#                       simply doesn't exist
-#   :skip_transient   - any other status (5xx, ...): warn and retry next run
+# The CDN is known to serve stale per-POP 404s for files that do exist, so a non-200
+# for a URL already in versions.json keeps the entry rather than dropping a released
+# binary. A 404 for an unknown URL means that version/platform doesn't exist; anything
+# else is transient and retried next run.
 function action_for_head_status(status::Integer, have_existing_entry::Bool)
     if status == 200
         return :proceed
@@ -221,12 +208,9 @@ function action_for_head_status(status::Integer, have_existing_entry::Bool)
     end
 end
 
-# Cheap staleness cross-check for a seeded entry against the live HEAD response: a
-# recorded field disagreeing with its header means the bytes behind the URL changed and
-# the recorded hashes are stale. Checked in order: size vs Content-Length, etag vs ETag,
-# last-modified vs Last-Modified. A field absent from the entry ends the cascade with a
-# reuse (old entries gain `etag`/`last-modified` incrementally); a header the server
-# didn't send simply can't be checked.
+# A seeded entry is stale if any recorded field disagrees with the live headers.
+# Fields absent from the entry (or headers the server didn't send) are skipped, so
+# etag/last-modified can be added to old entries incrementally.
 function entry_matches_head(file_dict, head; url = "")
     if head.content_length >= 0 && file_dict["size"] != head.content_length
         @warn "Size has changed from $(file_dict["size"]) to $(head.content_length); the published file was replaced" url
@@ -245,12 +229,11 @@ function entry_matches_head(file_dict, head; url = "")
     return true
 end
 
-# Does a (seeded) filedict have every field we require, so it can be carried over?
+# Can this seeded filedict be carried over as-is?
 function filedict_is_complete(file_dict, url)
     required = ["arch", "extension", "kind", "os", "sha256", "size", "triplet", "url", "version"]
     all(k -> haskey(file_dict, k), required) || return false
-    # tarballs additionally need the git tree hashes (except the skiplisted corrupt one,
-    # which can never have them and would otherwise be re-downloaded every run)
+    # tarballs also need the tree hashes, except the skiplisted corrupt one which can never have them
     if endswith(url, ".tar.gz") && !(url in tarball_git_tree_hash_skiplist)
         haskey(file_dict, "git-tree-sha1") || return false
         haskey(file_dict, "git-tree-sha256") || return false
@@ -404,7 +387,7 @@ function main(out_path)
                 "extension" => extension,
                 "url" => url,
             )
-            # Record the live headers so future incremental runs can cross-check them
+            # so later incremental runs can cross-check the headers
             if head.etag !== nothing
                 file_dict["etag"] = head.etag
             end
