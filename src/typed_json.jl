@@ -126,10 +126,8 @@ end
 
     # Optional fields:
     asc::Union{String, Nothing} = nothing
-    etag::Union{String, Nothing} = nothing
     git_tree_sha1::Union{SHA1, Nothing} = nothing &(json=(name="git-tree-sha1",),)
     git_tree_sha256::Union{String, Nothing} = nothing &(json=(name="git-tree-sha256",),) # TODO: Use SHA256 (instead of String)
-    last_modified::Union{String, Nothing} = nothing &(json=(name="last-modified",),)
 end
 function FileDict(dict::Dict)::FileDict
     file = FileDict(;
@@ -146,10 +144,8 @@ function FileDict(dict::Dict)::FileDict
 
         # Optional fields:
         asc = get(dict, "asc", nothing),
-        etag = get(dict, "etag", nothing),
         git_tree_sha1 = get(dict, "git-tree-sha1", nothing),
         git_tree_sha256 = get(dict, "git-tree-sha256", nothing),
-        last_modified = get(dict, "last-modified", nothing),
     )
     return file
 end
@@ -161,11 +157,21 @@ end
 
 const VersionsJsonDocument = Dict{VersionNumber, SingleVersionInfo}
 
-### internal.json:
+### versions-meta.json (the private sidecar; NOT part of the versions.json contract):
 
-struct InternalJsonSingleVersion
-    known_nonexistent_urls::Vector{URI}
+# The ETag and Last-Modified headers we observed when we last downloaded and hashed a URL.
+# These are CDN/S3 cache-bookkeeping, so they live in the sidecar rather than in the
+# published versions.json: consumers of versions.json (juliaup, setup-julia, jill, ...)
+# should never see them, and an ETag churning without a content change (e.g. a same-bytes
+# multipart re-upload) must not show up as a diff in the public file.
+@kwarg struct StoredHeadInfo
+    etag::Union{String, Nothing} = nothing
+    last_modified::Union{String, Nothing} = nothing &(json=(name="last-modified",),)
 end
-InternalJsonSingleVersion() = InternalJsonSingleVersion([])
+
+@kwarg struct InternalJsonSingleVersion
+    known_nonexistent_urls::Vector{URI} = URI[]
+    url_headinfo::Dict{String, StoredHeadInfo} = Dict{String, StoredHeadInfo}() &(json=(name="url-headinfo",),)
+end
 
 const InternalJsonDocument = Dict{VersionNumber, InternalJsonSingleVersion}

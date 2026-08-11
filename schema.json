@@ -35,17 +35,11 @@
                 "asc": {
                     "type": "string"
                 },
-                "etag": {
-                    "type": "string"
-                },
                 "extension": {
                     "$ref": "#/definitions/FileExtension"
                 },
                 "kind": {
                     "$ref": "#/definitions/Kind"
-                },
-                "last-modified": {
-                    "type": "string"
                 },
                 "os": {
                     "$ref": "#/definitions/OS"

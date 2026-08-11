@@ -2,6 +2,16 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      full-rebuild:
+        description: "Ignore the deployed versions.json and rebuild everything from scratch"
+        type: boolean
+        default: false
+  schedule:
+    # Monthly full-rebuild backstop: re-downloads and re-hashes everything, so any
+    # drift the incremental path cannot detect (a seed entry whose recorded hash is
+    # wrong while its ETag still matches) is bounded to a month.
+    - cron: "30 3 3 * *"
   push:
     branches:
       - main
@@ -26,6 +36,7 @@ env:
 
 jobs:
   package-tests:
+    name: Package tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -34,34 +45,34 @@ jobs:
         version:
           - '1.10' # currently the LTS
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
           persist-credentials: false
-      - uses: julia-actions/setup-julia@4a12c5f801ca5ef0458bba44687563ef276522dd # v3.0.0
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: ${{ matrix.version }}
-      - uses: julia-actions/cache@9a93c5fb3e9c1c20b60fc80a478cae53e38618a4 # v3.0.2
+      - uses: julia-actions/cache@b7788abd52452d5bc033d69796e110d9906af4ab # v3.2.0
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
-      - uses: julia-actions/julia-runtest@d60b785c6f2bdf4ebfb18b2b6f7d93b7dfb0efe3 # v1.11.4
+      - uses: julia-actions/julia-runtest@6e050c8013b833b1195105ff2fce9cd802f53271 # v1.12.0
 
   full-build-and-test:
-    # This job takes a long time (1+ hours).
-    # So we intentionally skip this job on PR runs.
+    # This job is slow when many entries need (re-)downloading, up to hours on a
+    # full rebuild. So we intentionally skip this job on PR runs.
     # But we still run this job on Merge Queue jobs.
-    # if: github.event_name != 'pull_request' # TODO: Uncomment this line before merging the PR
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
           persist-credentials: false
-      - uses: julia-actions/setup-julia@4a12c5f801ca5ef0458bba44687563ef276522dd # v3.0.0
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: 'lts'
-      - uses: julia-actions/cache@9a93c5fb3e9c1c20b60fc80a478cae53e38618a4 # v3.0.2
+      - uses: julia-actions/cache@b7788abd52452d5bc033d69796e110d9906af4ab # v3.2.0
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
       - name: Cleanup before we build
@@ -69,8 +80,18 @@ jobs:
           make clean
           make nuke
           make purge_download_cache_dir
-      - name: Download the old versions.json, so we can re-use it and build on top of it
-        run: curl -LO https://julialang-s3.julialang.org/bin/versions.json
+      - name: Download the deployed versions.json + versions-meta.json to build on top of
+        # Scheduled runs (and the manual full-rebuild switch) deliberately skip the
+        # seed and rebuild from scratch. A missing/broken seed must never fail the
+        # build: without versions.json we do a full rebuild, and without the
+        # versions-meta.json sidecar every seed entry counts as stale and gets
+        # re-downloaded, which converges to the same result.
+        if: github.event_name != 'schedule' && inputs.full-rebuild != true
+        run: |
+          curl -fLO https://julialang-s3.julialang.org/bin/versions.json \
+            || { echo "::warning::deployed versions.json unavailable; doing a full rebuild"; rm -f versions.json; }
+          curl -fLO https://julialang-s3.julialang.org/bin/versions-meta.json \
+            || { echo "::warning::versions-meta.json sidecar unavailable; all seed entries will be re-verified by re-downloading"; rm -f versions-meta.json; }
       - name: Build versions.json
         run: make build
         env:
@@ -81,18 +102,20 @@ jobs:
         run: make _npm_ci
       - name: Validate versions.json against schema
         run: make check-schema
-      - name: Upload versions.json as workflow artifact
+      - name: Upload versions.json + versions-meta.json as workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: versions
-          path: versions.json
+          path: |
+            versions.json
+            versions-meta.json
           if-no-files-found: error
 
   upload-to-s3:
     needs:
       - package-tests
       - full-build-and-test
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -101,15 +124,24 @@ jobs:
         with:
           name: versions
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@ec61189d14ec14c8efccab744f656cffd0e33f37 # 6.1.0
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # 6.2.3
         with:
           aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.aws_region }}
-      - name: Upload versions.json to S3
-        run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
+      - name: Upload versions.json + versions-meta.json to S3
+        run: |
+          aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
+          aws s3 cp versions-meta.json s3://${{ env.s3_bucket }}/bin/versions-meta.json --acl public-read --no-progress
       - name: Purge Fastly cache (Fastly sits in front of S3)
-        run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions.json
+        # As of 2026-08 the Fastly service rejects unauthenticated URL purges (401),
+        # so this surfaces a warning annotation instead of passing silently; the
+        # deployed file is then served stale for up to its cache TTL.
+        run: |
+          curl -fsS -X PURGE https://julialang-s3.julialang.org/bin/versions.json \
+            || echo "::warning::Fastly purge of versions.json failed; it will be served stale until the cached copy expires"
+          curl -fsS -X PURGE https://julialang-s3.julialang.org/bin/versions-meta.json \
+            || echo "::warning::Fastly purge of versions-meta.json failed"
 
   test-current-s3-allowed-to-fail:
     # We intentionally do not make this job a "required status check" on PRs.
@@ -120,13 +152,13 @@ jobs:
     strategy:
       fail-fast: false
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
           persist-credentials: false
-      - uses: julia-actions/setup-julia@4c0cb0fce8556fdb04a90347310e5db8b1f98fb9 # v2.7.0
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: 'lts'
-      - uses: julia-actions/cache@9a93c5fb3e9c1c20b60fc80a478cae53e38618a4 # v3.0.2
+      - uses: julia-actions/cache@b7788abd52452d5bc033d69796e110d9906af4ab # v3.2.0
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
       - name: Remove an old versions.json if one happens to be lying around

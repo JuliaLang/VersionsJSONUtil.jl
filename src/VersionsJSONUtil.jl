@@ -38,7 +38,7 @@ Base.@kwdef struct Config
 end
 function Config(output_directory::AbstractString)
     versions_json_filename = joinpath(output_directory, "versions.json")
-    internal_json_filename = joinpath(output_directory, "internal.json")
+    internal_json_filename = joinpath(output_directory, "versions-meta.json")
 
     cfg = Config(;
         versions_json_filename,
@@ -265,14 +265,8 @@ function delete_filedicts_for_url!(content, version, url)
     return nothing
 end
 
-function filedict_is_complete_and_good(content::OutputJsonContent, version::VersionNumber, url::URI)
-    filedict = find_filedict(content, version, url)
-    if isnothing(filedict)
-        return false
-    end
-    return filedict_is_complete_and_good(filedict)
-end
-
+# Pure record-completeness check: does this filedict have everything we require?
+# (Staleness against the live URL is a separate question; see stored_headinfo_matches.)
 function filedict_is_complete_and_good(filedict::FileDict)
     required_fields = [
         :arch,
@@ -284,20 +278,11 @@ function filedict_is_complete_and_good(filedict::FileDict)
         :triplet,
         :url,
         :version,
-
-        # So, as a general rule, `etag` is not actually a required key.
-        # But in this function, we pretend that it is required.
-        # Because if we didn't previously record an ETag, then we have no way of knowing now
-        # if the info (e.g. sha256) that we previously recorded is stale now.
-        :etag,
-        # Same goes for `last_modified`
-        :last_modified,
     ]
     optional_fields = [
         :asc,
         :git_tree_sha1,
         :git_tree_sha256,
-        :optional_field, # TODO: delete this line
     ]
     for k in required_fields
         if isnothing(getfield(filedict, k))
@@ -318,33 +303,17 @@ function filedict_is_complete_and_good(filedict::FileDict)
 
     ext = (filedict.extension)::ExtensionEnum.T
     # git-tree-sha1 and git-tree-sha256 are required for .tar.gz files
-    # They are optional for other files
-    if ext == ExtensionEnum.tar_gz
+    # They are optional for other files (and for the skiplisted tarballs,
+    # which can never have them -- without this exemption they would be
+    # re-downloaded on every incremental run)
+    if ext == ExtensionEnum.tar_gz && !(filedict.url in tarball_git_tree_hash_skiplist)
         required_for_targz = [:git_tree_sha1, :git_tree_sha256]
         for k in required_for_targz
             if isnothing(getfield(filedict, k))
                 # The filedict is missing one or more required targz-specific keys
-                # TODO: Implement the "required for .tar.gz" part, by uncommenting the following line:
                 return false
             end
         end
-    end
-
-    # Now the (compared to the rest of this function) expensive part: Check our Etag.
-    url = filedict.url
-    old_etag = filedict.etag
-    old_last_modified = filedict.last_modified
-    new_headinfo = get_new_headinfo_for_url(url)
-    if isnothing(new_headinfo)
-        return false
-    end
-    if old_etag != new_headinfo.etag
-        @warn "ETag for URL $url has changed from $(old_etag) to $(new_headinfo.etag)"
-        return false
-    end
-    if old_last_modified != new_headinfo.last_modified
-        @warn "Last-Modified for URL $url has changed from $(old_last_modified) to $(new_headinfo.last_modified)"
-        return false
     end
 
     return true
@@ -379,15 +348,77 @@ function get_new_headinfo_for_url(url::URI)
     etag = get(headers, "ETag", "")
     last_modified = get(headers, "Last-Modified", "")
     if isempty(strip(etag))
-        @warn "Got empty new ETag for URL: $etag"
+        @warn "Got empty ETag for URL: $url"
         etag = nothing
     end
     if isempty(strip(last_modified))
-        @warn "Got empty new ETag for URL: $last_modified"
+        @warn "Got empty Last-Modified for URL: $url"
         last_modified = nothing
     end
     head_info = HeadInfo(; status, etag, last_modified)
     return head_info
+end
+
+# The ETag/Last-Modified we recorded when we last hashed a URL live in the sidecar
+# (versions-meta.json), keyed by URL, never in the published versions.json.
+
+function get_stored_headinfo(content::OutputJsonContent, version::VersionNumber, url::URI)
+    internal_json = content.internal_json
+    haskey(internal_json, version) || return nothing
+    return get(internal_json[version].url_headinfo, string(url), nothing)
+end
+
+function store_headinfo!(content::OutputJsonContent, version::VersionNumber, url::URI, headinfo::HeadInfo)
+    internal_json = content.internal_json
+    get!(internal_json, version) do
+        InternalJsonSingleVersion()
+    end
+    internal_json[version].url_headinfo[string(url)] = StoredHeadInfo(;
+        etag = headinfo.etag,
+        last_modified = headinfo.last_modified,
+    )
+    return nothing
+end
+
+# Pure staleness check: is the previously recorded info for a URL still trustworthy,
+# given a fresh HEAD of that URL? If we never recorded headers (or the server stopped
+# sending them), we cannot know, so we treat the record as stale and re-download.
+function stored_headinfo_matches(stored::Union{StoredHeadInfo, Nothing}, new_headinfo::HeadInfo)
+    if isnothing(stored) || isnothing(stored.etag) || isnothing(stored.last_modified)
+        return false
+    end
+    if new_headinfo.status != 200
+        return false
+    end
+    if stored.etag != new_headinfo.etag
+        @warn "ETag has changed from $(stored.etag) to $(new_headinfo.etag)"
+        return false
+    end
+    if stored.last_modified != new_headinfo.last_modified
+        @warn "Last-Modified has changed from $(stored.last_modified) to $(new_headinfo.last_modified)"
+        return false
+    end
+    return true
+end
+
+# Pure policy for a non-200 HEAD response.
+#   :proceed          - the URL is live; go on to the completeness/staleness checks
+#   :keep_existing    - the URL is in the seed versions.json but the CDN says it is gone.
+#                       A published release file should never vanish, and this CDN is known
+#                       to serve stale per-POP 404s -- so keep the existing entry and warn,
+#                       rather than deleting a released binary from versions.json.
+#   :mark_nonexistent - a 404 for a URL we never knew: record it so future runs skip it
+#   :skip_transient   - any other status (5xx, ...): don't record anything, retry next run
+function action_for_head_status(status::Int, have_existing_entry::Bool)
+    if status == 200
+        return :proceed
+    elseif have_existing_entry
+        return :keep_existing
+    elseif status == 404
+        return :mark_nonexistent
+    else
+        return :skip_transient
+    end
 end
 
 ##### --------------------------------------------------------------------------------------
@@ -546,20 +577,34 @@ function main!(content::OutputJsonContent, cfg::Config)
                 continue # skip the rest of this for-loop iteration
             end
 
-            if filedict_is_complete_and_good(content, version, url)
+            existing_filedict = find_filedict(content, version, url)
+            headinfo = get_new_headinfo_for_url(url)
+
+            action = action_for_head_status(headinfo.status, !isnothing(existing_filedict))
+            if action == :keep_existing
+                @warn "HEAD returned $(headinfo.status) for previously-published URL $url; keeping the existing entry"
+                num_urls_already_complete += 1
+                update_download_progress!(version, filename; advance = true)
+                continue # skip the rest of this for-loop iteration
+            elseif action == :mark_nonexistent
+                mark_url_as_nonexistent!(content, version, url)
+                update_download_progress!(version, filename; advance = true)
+                continue # skip the rest of this for-loop iteration
+            elseif action == :skip_transient
+                @warn "HEAD returned $(headinfo.status) for URL $url; skipping it for this run"
+                update_download_progress!(version, filename; advance = true)
+                continue # skip the rest of this for-loop iteration
+            end
+
+            if !isnothing(existing_filedict) &&
+                    filedict_is_complete_and_good(existing_filedict) &&
+                    stored_headinfo_matches(get_stored_headinfo(content, version, url), headinfo)
                 num_urls_already_complete += 1
                 @debug "Skipping $filename as known-complete-filedict"
             else
                 # If a stale filedict exists, we need to remove it
                 # Otherwise, we end up with duplicate entries in the `files` list
                 delete_filedicts_for_url!(content, version, url)
-
-                headinfo = get_new_headinfo_for_url(url)
-                if headinfo.status == 404
-                    mark_url_as_nonexistent!(content, version, url)
-                    update_download_progress!(version, filename; advance = true)
-                    continue # skip the rest of this for-loop iteration
-                end
 
                 # Download this URL to a local file in a temp directory
                 number_urls_tried += 1
@@ -622,13 +667,6 @@ function main!(content::OutputJsonContent, cfg::Config)
                 file_dict["extension"] = ExtensionEnum.T(extension)
                 file_dict["url"] = url
 
-                if !isnothing(headinfo.etag)
-                    file_dict["etag"] = headinfo.etag
-                end
-                if !isnothing(headinfo.last_modified)
-                    file_dict["last-modified"] = headinfo.last_modified
-                end
-
                 if !isnothing(tree_hash_path_sha1)
                     file_dict["git-tree-sha1"] = tree_hash_path_sha1
                 end
@@ -639,6 +677,10 @@ function main!(content::OutputJsonContent, cfg::Config)
                 # Let's be forward-thinking: Make this an array of dictionaries that is
                 # easy to extensibly match.
                 push!(meta[version].files, FileDict(file_dict))
+
+                # Record the headers we hashed this URL at, so the next run can tell
+                # whether the recorded info is still fresh (sidecar, not versions.json).
+                store_headinfo!(content, version, url, headinfo)
 
                 # Delete the downloaded file
                 rm(filepath; force = true)
@@ -657,20 +699,23 @@ function main!(content::OutputJsonContent, cfg::Config)
                 asc_signature = nothing
                 if !isa(platform, MacOS) && !isa(platform, Windows)
                     asc_url = URI(string(url, ".asc"))
-                    asc_filename = basename(string(asc_url))
-                    @debug "Downloading $asc_filename"
-                    try
-                        my_sleep()
-                        asc_filepath = Downloads.download(string(asc_url))
-                        asc_signature = String(read(asc_filepath))
-                        rm(asc_filepath)
-                    catch ex
-                        if (ex isa Downloads.RequestError) && (ex.response.status == 404)
-                            mark_url_as_nonexistent!(content, version, url)
-                            update_download_progress!(version, filename; advance = true)
-                            continue # skip the rest of this for-loop iteration
-                        else
-                            rethrow()
+                    if !url_is_known_nonexistent(content, version, asc_url)
+                        asc_filename = basename(string(asc_url))
+                        @debug "Downloading $asc_filename"
+                        try
+                            my_sleep()
+                            asc_filepath = Downloads.download(string(asc_url))
+                            asc_signature = String(read(asc_filepath))
+                            rm(asc_filepath)
+                        catch ex
+                            if (ex isa Downloads.RequestError) && (ex.response.status == 404)
+                                # Mark the .asc URL (NOT the file's own URL) as nonexistent:
+                                # old releases legitimately have no signature files, and the
+                                # file itself demonstrably exists.
+                                mark_url_as_nonexistent!(content, version, asc_url)
+                            else
+                                rethrow()
+                            end
                         end
                     end
                 end

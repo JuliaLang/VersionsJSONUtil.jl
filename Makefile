@@ -44,11 +44,11 @@ _npm_ci:
 
 .PHONY: clean
 clean:
-	$(RM) -v internal.json
+	$(RM) -v versions-meta.json
 
 .PHONY: nuke
 nuke:
-	$(RM) -v internal.json
+	$(RM) -v versions-meta.json
 	$(RM) -v versions.json
 
 .PHONY: _purge_node_modules
