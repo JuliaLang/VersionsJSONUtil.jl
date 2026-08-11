@@ -178,15 +178,15 @@ function head_url(url)
         isa(ex, InterruptException) && rethrow(ex)
         # a failed request (DNS, reset, ...) must not kill the run; status 0 = transient
         @warn "HEAD request failed for $(url)" exception=(ex,)
-        return (; status = 0, content_length = -1, etag = nothing, last_modified = nothing)
+        return (; status = 0, content_length = nothing, etag = nothing, last_modified = nothing)
     end
-    # -1 = header missing/unparsable (a real Content-Length of 0 stays distinguishable)
+    # nothing = header missing/unparsable
     content_length = tryparse(Int, String(strip(HTTP.header(response, "Content-Length"))))
     etag = String(strip(HTTP.header(response, "ETag")))
     last_modified = String(strip(HTTP.header(response, "Last-Modified")))
     return (;
         status = Int(response.status),
-        content_length = something(content_length, -1),
+        content_length,
         etag = isempty(etag) ? nothing : etag,
         last_modified = isempty(last_modified) ? nothing : last_modified,
     )
@@ -209,22 +209,19 @@ function action_for_head_status(status::Integer, have_existing_entry::Bool)
 end
 
 # A seeded entry is stale if any recorded field disagrees with the live headers.
-# Fields absent from the entry (or headers the server didn't send) are skipped, so
-# etag/last-modified can be added to old entries incrementally.
+# A field the entry doesn't have ends the cascade with a reuse (etag/last-modified are
+# being added to old entries incrementally); a header the server didn't send is
+# `nothing` and can't be checked, so that comparison is skipped.
 function entry_matches_head(file_dict, head; url = "")
-    if head.content_length >= 0 && file_dict["size"] != head.content_length
-        @warn "Size has changed from $(file_dict["size"]) to $(head.content_length); the published file was replaced" url
-        return false
-    end
-    haskey(file_dict, "etag") || return true
-    if head.etag !== nothing && file_dict["etag"] != head.etag
-        @warn "ETag has changed from $(file_dict["etag"]) to $(head.etag); the published file was replaced" url
-        return false
-    end
-    haskey(file_dict, "last-modified") || return true
-    if head.last_modified !== nothing && file_dict["last-modified"] != head.last_modified
-        @warn "Last-Modified has changed from $(file_dict["last-modified"]) to $(head.last_modified); the published file was replaced" url
-        return false
+    for (field, live) in [("size", head.content_length),
+                          ("etag", head.etag),
+                          ("last-modified", head.last_modified)]
+        haskey(file_dict, field) || return true
+        live === nothing && continue
+        if file_dict[field] != live
+            @warn "$(field) has changed from $(file_dict[field]) to $(live); the published file was replaced" url
+            return false
+        end
     end
     return true
 end

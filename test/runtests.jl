@@ -51,12 +51,12 @@ const download_urls = Dict(
 
     @testset "entry_matches_head" begin
         matches = VersionsJSONUtil.entry_matches_head
-        head(; content_length = -1, etag = nothing, last_modified = nothing) =
+        head(; content_length = nothing, etag = nothing, last_modified = nothing) =
             (; status = 200, content_length, etag, last_modified)
         entry = Dict("size" => 1234)
         @test matches(entry, head(content_length = 1234))
         @test !matches(entry, head(content_length = 1235))
-        # -1 = Content-Length header absent, can't check
+        # absent Content-Length header can't be checked
         @test matches(entry, head())
         # but a real zero-length response is a mismatch
         @test !matches(entry, head(content_length = 0))
