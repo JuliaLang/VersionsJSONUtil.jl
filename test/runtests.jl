@@ -48,6 +48,9 @@ const download_urls = Dict(
         # Any other status for an unknown URL is transient: retry next run
         @test action(500, false) == :skip_transient
         @test action(503, false) == :skip_transient
+        # status 0 = the HEAD request itself failed (DNS, connection reset, ...)
+        @test action(0, true) == :keep_existing
+        @test action(0, false) == :skip_transient
     end
 
     @testset "entry_size_matches" begin
