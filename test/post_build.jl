@@ -99,16 +99,10 @@ check_usage()
                         "triplet",
                         "url",
                         "version",
-
-                        # etag and last-modified are technically optional.
-                        # Because in theory we don't know what the upstream is, and if it
-                        # supports these headers.
-                        # But in practice, we know that the upstream is S3
-                        # and we know that it supports these two headers.
-                        # So for the purpose of these tests, we treat these as required
-                        "etag",
-                        "last-modified",
                     ]
+                    # NB: etag and last-modified deliberately do NOT appear here (nor in
+                    # optional_keys): they live in the versions-meta.json sidecar, and the
+                    # allowed-keys check below fails if they ever leak into versions.json.
                     optional_keys = [
                         "asc",
                     ]
@@ -252,31 +246,6 @@ check_usage()
                             @test filedict["asc"] isa AbstractString
                             @test startswith(filedict["asc"], "-----BEGIN PGP SIGNATURE-----")
                             @test endswith(chomp(filedict["asc"]), "-----END PGP SIGNATURE-----")
-                        end
-                    end
-                    @testset "etag field (optional)" begin
-                        if haskey(filedict, "etag")
-                            etag = lowercase(strip(filedict["etag"]))
-                            @test !isempty(etag)
-                            @test etag != "null"
-                            @test etag != "nothing"
-
-                            # Guaranteed to be ASCII, per spec
-                            # > Entity tag that uniquely represents the requested resource.
-                            # It is a string of ASCII characters placed between double quotes
-                            # Source: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/ETag
-                            @test isascii(etag)
-                        end
-                    end
-                    @testset "last-modified field (optional)" begin
-                        if haskey(filedict, "last-modified")
-                            @test !isempty(strip(filedict["last-modified"]))
-                            last_modified = lowercase(strip(filedict["last-modified"]))
-                            @test !isempty(last_modified)
-                            @test last_modified != "null"
-                            @test last_modified != "nothing"
-
-                            @test isascii(last_modified)
                         end
                     end
                 end # for filedict in filedicts_array
