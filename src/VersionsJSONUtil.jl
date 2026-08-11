@@ -177,7 +177,10 @@ end
 
 function head_url(url)
     response = try
-        HTTP.head(url; status_exception = false)
+        # Finite timeouts are essential: HTTP.jl's default read timeout is
+        # infinite, so a single black-holed connection would otherwise hang
+        # the whole build
+        HTTP.head(url; status_exception = false, connect_timeout = 15, readtimeout = 30, retries = 2)
     catch ex
         isa(ex, InterruptException) && rethrow(ex)
         # A failed request (DNS, connection reset, ...) must not kill the run;
