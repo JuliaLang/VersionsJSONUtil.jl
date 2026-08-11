@@ -195,15 +195,6 @@ function head_url(url)
     )
 end
 
-# The HEAD lookups are independent of each other, so do them all concurrently up
-# front; the build loop then reads from this table instead of making live calls.
-# ntasks stays at HTTP.jl's default per-host connection limit: more tasks than
-# connections just thrash the pool with TLS setup (measured slower, not faster).
-function head_urls(urls; ntasks = 8)
-    heads = asyncmap(head_url, urls; ntasks)
-    return Dict(zip(urls, heads))
-end
-
 # Pure policy for a HEAD response.
 #   :proceed          - the URL is live; go on to the completeness/size checks
 #   :keep_existing    - the URL is in the seed versions.json but the CDN says it is gone.
@@ -271,12 +262,6 @@ function main(out_path)
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
 
     meta = load_seed(out_path)
-
-    candidate_urls = [download_url(v, p) for v in tag_versions for p in julia_platforms]
-    @info "HEADing $(length(candidate_urls)) candidate URLs..."
-    elapsed = @elapsed head_table = head_urls(candidate_urls)
-    @info "HEAD prepass finished in $(round(elapsed; digits=1))s"
-
     number_urls_tried = 0
     number_urls_success = 0
     number_carried_over = 0
@@ -286,7 +271,7 @@ function main(out_path)
             filename = basename(url)
 
             existing = find_filedict(meta, version, url)
-            head = head_table[url]
+            head = head_url(url)
             action = action_for_head_status(head.status, existing !== nothing)
             if action == :keep_existing
                 @warn "HEAD returned $(head.status) for previously-published $(url); keeping the existing entry"
