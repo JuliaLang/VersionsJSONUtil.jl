@@ -84,8 +84,12 @@ jobs:
         # a missing/broken seed must not fail the build; we just rebuild from scratch
         if: inputs.full-rebuild != true
         run: |
-          curl -fLO https://julialang-s3.julialang.org/bin/versions.json \
-            || { echo "::warning::deployed versions.json unavailable; doing a full rebuild"; rm -f versions.json; }
+          if curl -fLO https://julialang-s3.julialang.org/bin/versions.json; then
+            cp versions.json seed.versions.json
+          else
+            echo "::warning::deployed versions.json unavailable; doing a full rebuild"
+            rm -f versions.json
+          fi
 
       - name: Build versions.json
         run: |
@@ -93,6 +97,15 @@ jobs:
 
           VersionsJSONUtil.main("versions.json")
         shell: julia --project {0}
+
+      - name: Diff against the deployed versions.json
+        # sort keys with jq first: the Dict serialization order isn't stable
+        run: |
+          if [ -f seed.versions.json ]; then
+            diff -u <(jq -S . seed.versions.json) <(jq -S . versions.json) || true
+          else
+            echo "no seed was downloaded; skipping the diff"
+          fi
 
       - name: Validate versions.json against schema
         run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
