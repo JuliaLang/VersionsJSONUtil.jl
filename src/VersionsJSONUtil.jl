@@ -216,6 +216,8 @@ function entry_matches_head(file_dict, head; url = "")
     for (field, live) in [("size", head.content_length),
                           ("etag", head.etag),
                           ("last-modified", head.last_modified)]
+        # only etag/last-modified can be absent here; the filedict_is_complete check
+        # that runs before this already required size
         haskey(file_dict, field) || return true
         live === nothing && continue
         if file_dict[field] != live
@@ -228,12 +230,26 @@ end
 
 # Can this seeded filedict be carried over as-is?
 function filedict_is_complete(file_dict, url)
-    required = ["arch", "extension", "kind", "os", "sha256", "size", "triplet", "url", "version"]
-    all(k -> haskey(file_dict, k), required) || return false
+    required = [
+        "arch",
+        "extension",
+        "kind",
+        "os",
+        "sha256",
+        "size",
+        "triplet",
+        "url",
+        "version",
+    ]
+    for k in required
+        haskey(file_dict, k) || return false
+        v = file_dict[k]
+        v isa AbstractString && isempty(strip(v)) && return false
+    end
     # tarballs also need the tree hashes, except the skiplisted corrupt one which can never have them
-    if endswith(url, ".tar.gz") && !(url in tarball_git_tree_hash_skiplist)
-        haskey(file_dict, "git-tree-sha1") || return false
-        haskey(file_dict, "git-tree-sha256") || return false
+    if endswith(lowercase(url), ".tar.gz") && !(url in tarball_git_tree_hash_skiplist)
+        occursin(r"^[0-9a-f]{40}$", get(file_dict, "git-tree-sha1", "")) || return false
+        occursin(r"^[0-9a-f]{64}$", get(file_dict, "git-tree-sha256", "")) || return false
     end
     return true
 end

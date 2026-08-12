@@ -92,8 +92,13 @@ const download_urls = Dict(
         # Non-tarball entries don't need tree hashes
         exe_url = replace(url, ".tar.gz" => ".exe")
         @test complete(base, exe_url)
-        # Missing a required field
+        # Missing, blank, or malformed fields
         @test !complete(delete!(copy(targz), "sha256"), url)
+        @test !complete(merge(targz, Dict("version" => "  ")), url)
+        @test !complete(merge(targz, Dict("git-tree-sha1" => "not-a-hash")), url)
+        @test !complete(merge(targz, Dict("git-tree-sha256" => "3"^63)), url)
+        # extension check is case-insensitive
+        @test !complete(base, replace(url, ".tar.gz" => ".TAR.GZ"))
         # The skiplisted corrupt tarball is exempt from the tree-hash requirement
         skiplisted = VersionsJSONUtil.tarball_git_tree_hash_skiplist[1]
         @test complete(base, skiplisted)
