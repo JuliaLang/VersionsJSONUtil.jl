@@ -144,7 +144,7 @@ jobs:
       - name: Purge cache
         # Fastly currently 401s unauthenticated purges; warn rather than fail silently
         run: |
-          curl -fsS -X PURGE https://julialang-s3.julialang.org/bin/versions.json \
+          curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/versions.json \
             || echo "::warning::Fastly purge of versions.json failed; it will be served stale until the cached copy expires"
 
   test-current-s3:
