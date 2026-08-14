@@ -7,6 +7,10 @@ on:
         description: "Ignore the deployed versions.json and rebuild everything from scratch"
         type: boolean
         default: false
+      only-version:
+        description: "Only add/update this one version (e.g. 1.13.0-rc3); everything else is carried over as-is"
+        type: string
+        default: ""
   push:
     branches:
       - main
@@ -95,7 +99,12 @@ jobs:
         run: |
           using VersionsJSONUtil
 
-          VersionsJSONUtil.main("versions.json")
+          only_version = "${{ inputs.only-version }}"
+
+          VersionsJSONUtil.main(
+              "versions.json";
+              only_version = isempty(only_version) ? nothing : only_version,
+          )
         shell: julia --project {0}
 
       - name: Diff against the deployed versions.json
