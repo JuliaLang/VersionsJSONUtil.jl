@@ -1,12 +1,12 @@
-# VersionsJSONUtil: Generate `versions.json` files that contain the list of Julia versions
+# VersionsJSONUtil: Generate the `versions.json` file that contains the list of Julia versions
 
 S3 URL:
-- v1: https://julialang-s3.julialang.org/bin/versions.json
-- v2: [coming soon][^1]
+1. v1:
+    - `versions.json`: https://julialang-s3.julialang.org/bin/versions.json
+    - schema: https://julialang-s3.julialang.org/bin/versions-schema.json
+2. v2: [coming soon, maybe][^1]
 
-[^1]: v2 is not available yet. When it becomes available, the S3 URL will *probably* be `https://julialang-s3.julialang.org/bin/versions.v2.json`
-
-
+[^1]: v2 is not available yet. If/when it becomes available, the S3 URL will *probably* be `https://julialang-s3.julialang.org/bin/versions.v2.json`
 
 ## JSON Schema
 
