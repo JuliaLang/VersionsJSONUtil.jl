@@ -209,16 +209,16 @@ function action_for_head_status(status::Integer, have_existing_entry::Bool)
 end
 
 # A seeded entry is stale if any recorded field disagrees with the live headers.
-# A field the entry doesn't have ends the cascade with a reuse (etag/last-modified are
-# being added to old entries incrementally); a header the server didn't send is
-# `nothing` and can't be checked, so that comparison is skipped.
+# A field the entry doesn't have is skipped (etag/last-modified are being added to old
+# entries incrementally); a header the server didn't send is `nothing` and can't be
+# checked, so that comparison is skipped too.
 function entry_matches_head(file_dict, head; url = "")
     for (field, live) in [("size", head.content_length),
                           ("etag", head.etag),
                           ("last-modified", head.last_modified)]
         # only etag/last-modified can be absent here; the filedict_is_complete check
         # that runs before this already required size
-        haskey(file_dict, field) || return true
+        haskey(file_dict, field) || continue
         live === nothing && continue
         if file_dict[field] != live
             @warn "$(field) has changed from $(file_dict[field]) to $(live); the published file was replaced" url
@@ -256,6 +256,7 @@ end
 
 function find_filedict(meta, version, url)
     haskey(meta, version) || return nothing
+    haskey(meta[version], "files") || return nothing
     for file_dict in meta[version]["files"]
         file_dict["url"] == url && return file_dict
     end
@@ -265,6 +266,7 @@ end
 function delete_filedicts_for_url!(meta, version, url)
     # Remove any stale entry so a re-download can't produce duplicates
     haskey(meta, version) || return nothing
+    haskey(meta[version], "files") || return nothing
     filter!(file_dict -> file_dict["url"] != url, meta[version]["files"])
     return nothing
 end
@@ -296,7 +298,7 @@ function main(out_path)
                 continue
             end
 
-            if existing !== nothing && filedict_is_complete(existing, url) &&
+            if action == :proceed && existing !== nothing && filedict_is_complete(existing, url) &&
                     entry_matches_head(existing, head; url)
                 number_carried_over += 1
                 continue
