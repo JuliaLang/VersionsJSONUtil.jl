@@ -99,7 +99,7 @@ jobs:
         shell: julia --project {0}
 
       - name: Diff against the deployed versions.json
-        # sort keys with jq first: the Dict serialization order isn't stable
+        # sort keys with jq first
         run: |
           if [ -f seed.versions.json ]; then
             diff -u <(jq -S . seed.versions.json) <(jq -S . versions.json) || true
@@ -142,7 +142,6 @@ jobs:
         run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
 
       - name: Purge cache
-        # Fastly currently 401s unauthenticated purges; warn rather than fail silently
         run: |
           curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/versions.json \
             || echo "::warning::Fastly purge of versions.json failed; it will be served stale until the cached copy expires"
