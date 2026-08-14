@@ -143,17 +143,167 @@ function get_tags()
     JSON.parse(String(read(tags_json_path)))
 end
 
+# ------------------------------------------------------------------------------------------
+# Incremental rebuilds: seed from the deployed versions.json and only download what's
+# missing. A seeded entry is kept after a HEAD cross-check of its recorded
+# size/etag/last-modified against the live headers. The full-rebuild input in CI.yml
+# re-downloads everything from scratch.
+
+function load_seed(out_path)
+    meta = Dict{VersionNumber, Any}()
+    if isfile(out_path)
+        for (k, v) in JSON.parsefile(out_path)
+            ver = vnum_maybe(k)
+            ver === nothing && continue
+            meta[ver] = v
+        end
+        @info "Seeded $(length(meta)) versions from $(out_path)"
+    else
+        @info "No $(out_path) found; building from scratch"
+    end
+    return meta
+end
+
+function checkpoint(out_path, meta)
+    open(out_path, "w") do io
+        JSON.print(io, meta, 2)
+    end
+end
+
+function head_url(url)
+    response = try
+        # HTTP.jl's default read timeout is infinite; one hung connection would stall the build
+        HTTP.head(url; status_exception = false, connect_timeout = 15, readtimeout = 30, retries = 2)
+    catch ex
+        isa(ex, InterruptException) && rethrow(ex)
+        # a failed request (DNS, reset, ...) must not kill the run; status 0 = transient
+        @warn "HEAD request failed for $(url)" exception=(ex,)
+        return (; status = 0, content_length = nothing, etag = nothing, last_modified = nothing)
+    end
+    # nothing = header missing/unparsable
+    content_length = tryparse(Int, String(strip(HTTP.header(response, "Content-Length"))))
+    etag = String(strip(HTTP.header(response, "ETag")))
+    last_modified = String(strip(HTTP.header(response, "Last-Modified")))
+    return (;
+        status = Int(response.status),
+        content_length,
+        etag = isempty(etag) ? nothing : etag,
+        last_modified = isempty(last_modified) ? nothing : last_modified,
+    )
+end
+
+# The CDN is known to serve stale per-POP 404s for files that do exist, so a non-200
+# for a URL already in versions.json keeps the entry rather than dropping a released
+# binary. A 404 for an unknown URL means that version/platform doesn't exist; anything
+# else is transient and retried next run.
+function action_for_head_status(status::Integer, have_existing_entry::Bool)
+    if status == 200
+        return :proceed
+    elseif have_existing_entry
+        return :keep_existing
+    elseif status == 404
+        return :skip_nonexistent
+    else
+        return :skip_transient
+    end
+end
+
+# A seeded entry is stale if any recorded field disagrees with the live headers.
+# A field the entry doesn't have is skipped (etag/last-modified are being added to old
+# entries incrementally); a header the server didn't send is `nothing` and can't be
+# checked, so that comparison is skipped too.
+function entry_matches_head(file_dict, head; url = "")
+    for (field, live) in [("size", head.content_length),
+                          ("etag", head.etag),
+                          ("last-modified", head.last_modified)]
+        # only etag/last-modified can be absent here; the filedict_is_complete check
+        # that runs before this already required size
+        haskey(file_dict, field) || continue
+        live === nothing && continue
+        if file_dict[field] != live
+            @warn "$(field) has changed from $(file_dict[field]) to $(live); the published file was replaced" url
+            return false
+        end
+    end
+    return true
+end
+
+# Can this seeded filedict be carried over as-is?
+function filedict_is_complete(file_dict, url)
+    required = [
+        "arch",
+        "extension",
+        "kind",
+        "os",
+        "sha256",
+        "size",
+        "triplet",
+        "url",
+        "version",
+    ]
+    for k in required
+        haskey(file_dict, k) || return false
+        v = file_dict[k]
+        v isa AbstractString && isempty(strip(v)) && return false
+    end
+    # tarballs also need the tree hashes, except the skiplisted corrupt one which can never have them
+    if endswith(lowercase(url), ".tar.gz") && !(url in tarball_git_tree_hash_skiplist)
+        occursin(r"^[0-9a-f]{40}$", get(file_dict, "git-tree-sha1", "")) || return false
+        occursin(r"^[0-9a-f]{64}$", get(file_dict, "git-tree-sha256", "")) || return false
+    end
+    return true
+end
+
+function find_filedict(meta, version, url)
+    haskey(meta, version) || return nothing
+    haskey(meta[version], "files") || return nothing
+    for file_dict in meta[version]["files"]
+        file_dict["url"] == url && return file_dict
+    end
+    return nothing
+end
+
+function delete_filedicts_for_url!(meta, version, url)
+    # Remove any stale entry so a re-download can't produce duplicates
+    haskey(meta, version) || return nothing
+    haskey(meta[version], "files") || return nothing
+    filter!(file_dict -> file_dict["url"] != url, meta[version]["files"])
+    return nothing
+end
+
 function main(out_path)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
 
-    meta = Dict()
+    meta = load_seed(out_path)
     number_urls_tried = 0
     number_urls_success = 0
+    number_carried_over = 0
     for version in tag_versions
         for platform in julia_platforms
             url = download_url(version, platform)
             filename = basename(url)
+
+            existing = find_filedict(meta, version, url)
+            head = head_url(url)
+            action = action_for_head_status(head.status, existing !== nothing)
+            if action == :keep_existing
+                @warn "HEAD returned $(head.status) for previously-published $(url); keeping the existing entry"
+                number_carried_over += 1
+                continue
+            elseif action == :skip_nonexistent
+                continue
+            elseif action == :skip_transient
+                @warn "HEAD returned $(head.status) for $(url); skipping it for this run"
+                continue
+            end
+
+            if action == :proceed && existing !== nothing && filedict_is_complete(existing, url) &&
+                    entry_matches_head(existing, head; url)
+                number_carried_over += 1
+                continue
+            end
+            delete_filedicts_for_url!(meta, version, url)
 
             # Download this URL to a local file
             number_urls_tried += 1
@@ -252,6 +402,13 @@ function main(out_path)
                 "extension" => extension,
                 "url" => url,
             )
+            # so later incremental runs can cross-check the headers
+            if head.etag !== nothing
+                file_dict["etag"] = head.etag
+            end
+            if head.last_modified !== nothing
+                file_dict["last-modified"] = head.last_modified
+            end
             if tarball_git_tree_hashes !== nothing
                 merge!(file_dict, tarball_git_tree_hashes)
             end
@@ -265,15 +422,15 @@ function main(out_path)
             push!(meta[version]["files"], file_dict)
 
             # Write out new versions of our versions.json as we go
-            open(out_path, "w") do io
-                JSON.print(io, meta, 2)
-            end
+            checkpoint(out_path, meta)
 
             # Delete downloaded file
             rm(filepath)
         end
     end
-    @info "Tried $(number_urls_tried) versions, successfully downloaded $(number_urls_success)"
+    # Always write the output, even if nothing needed re-downloading
+    checkpoint(out_path, meta)
+    @info "Tried $(number_urls_tried) URLs, successfully downloaded $(number_urls_success). Carried over $(number_carried_over) up-to-date entries."
 end
 
 end # module

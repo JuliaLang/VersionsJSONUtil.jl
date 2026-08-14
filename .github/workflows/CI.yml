@@ -2,6 +2,11 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      full-rebuild:
+        description: "Ignore the deployed versions.json and rebuild everything from scratch"
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -75,12 +80,32 @@ jobs:
 
       - run: rm -f versions.json
 
+      - name: Download the deployed versions.json to build on top of
+        # a missing/broken seed must not fail the build; we just rebuild from scratch
+        if: inputs.full-rebuild != true
+        run: |
+          if curl -fLO https://julialang-s3.julialang.org/bin/versions.json; then
+            cp versions.json seed.versions.json
+          else
+            echo "::warning::deployed versions.json unavailable; doing a full rebuild"
+            rm -f versions.json
+          fi
+
       - name: Build versions.json
         run: |
           using VersionsJSONUtil
 
           VersionsJSONUtil.main("versions.json")
         shell: julia --project {0}
+
+      - name: Diff against the deployed versions.json
+        # sort keys with jq first
+        run: |
+          if [ -f seed.versions.json ]; then
+            diff -u <(jq -S . seed.versions.json) <(jq -S . versions.json) || true
+          else
+            echo "no seed was downloaded; skipping the diff"
+          fi
 
       - name: Validate versions.json against schema
         run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
@@ -117,7 +142,9 @@ jobs:
         run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
 
       - name: Purge cache
-        run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions.json
+        run: |
+          curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/versions.json \
+            || echo "::warning::Fastly purge of versions.json failed; it will be served stale until the cached copy expires"
 
   test-current-s3:
     # We intentionally do not make this job a "required status check" on PRs.

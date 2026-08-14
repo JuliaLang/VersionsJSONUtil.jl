@@ -50,6 +50,12 @@
                 "size": {
                     "type": "integer"
                 },
+                "etag": {
+                    "type": "string"
+                },
+                "last-modified": {
+                    "type": "string"
+                },
                 "version": {
                     "type": "string"
                 },
