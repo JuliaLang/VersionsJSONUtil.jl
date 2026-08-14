@@ -271,11 +271,18 @@ function delete_filedicts_for_url!(meta, version, url)
     return nothing
 end
 
-function main(out_path)
+function main(out_path; only_version = nothing)
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
 
     meta = load_seed(out_path)
+    if only_version !== nothing
+        version = VersionNumber(only_version)
+        version in tag_versions || error("$(version) is not a tag in the JuliaLang/julia repository")
+        # a missing seed would produce a versions.json containing only this version
+        isempty(meta) && error("refusing to run with only_version = $(version) without a seeded versions.json")
+        tag_versions = [version]
+    end
     number_urls_tried = 0
     number_urls_success = 0
     number_carried_over = 0
