@@ -139,11 +139,26 @@ function tarball_git_tree_hash(; tarball_path::AbstractString, algorithm::Abstra
     return open(io -> Tar.tree_hash(io; algorithm), `$(exe7z()) x $tarball_path -so`)
 end
 
+function github_api_headers(token::Union{Nothing, AbstractString})
+    headers = ["Accept" => "application/vnd.github+json"]
+    if token !== nothing && !isempty(token)
+        push!(headers, "Authorization" => "Bearer $(token)")
+    end
+    return headers
+end
+
 # Get list of tags from the Julia repo. Always fetched fresh: a cached tag list
 # that predates a just-pushed tag makes the only_version dispatch path fail.
-function get_tags()
+# GitHub's matching-refs endpoint is not paginated and returns all matching tags.
+# Set GITHUB_TOKEN to authenticate; a fine-grained token needs only Contents: read.
+function get_tags(;
+    github_token::Union{Nothing, AbstractString} = get(ENV, "GITHUB_TOKEN", nothing),
+)
     @info("Probing for tag list...")
-    response = HTTP.get("https://api.github.com/repos/JuliaLang/julia/git/refs/tags")
+    response = HTTP.get(
+        "https://api.github.com/repos/JuliaLang/julia/git/refs/tags",
+        github_api_headers(github_token),
+    )
     return JSON.parse(String(response.body))
 end
 
