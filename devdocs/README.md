@@ -76,3 +76,87 @@ function tar_os(p::MacOS)
     end
 end
 ```
+
+## AWS authentication (GitHub OIDC)
+
+The CI jobs that talk to AWS authenticate by assuming per-job IAM roles through GitHub's
+OIDC provider, so no long-lived access keys are stored in this repo. Two roles with
+different scopes are used; their ARNs are not secret (they are only assumable from this
+repo's workflows) and are inlined in the workflow files:
+
+- a **read-only role** (`arn:aws:iam::873569884612:role/VersionsJSONUtil-readonly`) for
+  the `full-test` job, which lists the `julialang2` bucket while building `versions.json`;
+- a **deploy role** (`arn:aws:iam::873569884612:role/VersionsJSONUtil-deploy`) for the
+  `upload-to-s3` and `deploy-schema` jobs, which write the two deployed files.
+
+The GitHub OIDC identity provider (`token.actions.githubusercontent.com`) already exists
+in the AWS account; the roles below only reference it.
+
+A note on pull requests: the read-only role is also assumable from `pull_request` runs of
+this repo (their tokens carry the `sub` `repo:JuliaLang/VersionsJSONUtil.jl:pull_request`),
+but only for PRs from branches of this repo — GitHub refuses `id-token: write` to
+fork-triggered `pull_request` runs entirely, so fork PRs can never assume any role and
+fall back to unsigned requests (which the public bucket accepts). The deploy role is not
+assumable from PRs at all: its trust matches only `refs/heads/main`, and tokens minted for
+`pull_request` runs carry a `sub` ending in `:pull_request` instead of a branch ref, so
+even a future workflow mistake (like granting `id-token: write` to a PR job) could not
+deploy from a PR.
+
+### Role documents
+
+The trust and permissions policy documents are checked in under [`devdocs/aws/`](aws/):
+
+- [`VersionsJSONUtil-readonly.trust.json`](aws/VersionsJSONUtil-readonly.trust.json) —
+  matches `refs/heads/main` (push and `workflow_dispatch`, which `full-test` restricts to
+  `main` with a matching `if:` guard), merge-queue refs
+  (`refs/heads/gh-readonly-queue/...`), and `pull_request` runs as described above.
+- [`VersionsJSONUtil-readonly.policy.json`](aws/VersionsJSONUtil-readonly.policy.json) —
+  listing and reading the `bin/` prefix: the build lists it to decide what is missing and
+  downloads the binaries through authenticated requests (`s3:GetObject`), so neither part
+  is subject to anonymous rate limits.
+- [`VersionsJSONUtil-deploy.trust.json`](aws/VersionsJSONUtil-deploy.trust.json) —
+  deploys only ever run from `main`, so this one matches exactly that ref
+  (`StringEquals`, no wildcard needed).
+- [`VersionsJSONUtil-deploy.policy.json`](aws/VersionsJSONUtil-deploy.policy.json) —
+  writing exactly the two deployed files (`s3:PutObjectAcl` is required because the
+  uploads use `--acl public-read`).
+
+### Creating the roles
+
+From the repository root, run:
+
+```bash
+aws iam create-role \
+  --role-name VersionsJSONUtil-readonly \
+  --description "Read access to bin/ in the julialang2 bucket for JuliaLang/VersionsJSONUtil.jl CI" \
+  --assume-role-policy-document file://devdocs/aws/VersionsJSONUtil-readonly.trust.json \
+  --max-session-duration 21600
+
+aws iam put-role-policy \
+  --role-name VersionsJSONUtil-readonly \
+  --policy-name s3-read-bin \
+  --policy-document file://devdocs/aws/VersionsJSONUtil-readonly.policy.json
+
+aws iam create-role \
+  --role-name VersionsJSONUtil-deploy \
+  --description "Deploy versions.json and versions-schema.json for JuliaLang/VersionsJSONUtil.jl CI" \
+  --assume-role-policy-document file://devdocs/aws/VersionsJSONUtil-deploy.trust.json
+
+aws iam put-role-policy \
+  --role-name VersionsJSONUtil-deploy \
+  --policy-name s3-deploy-versions-json \
+  --policy-document file://devdocs/aws/VersionsJSONUtil-deploy.policy.json
+```
+
+`--max-session-duration 21600` (6 h) on the read-only role matches the `full-test` job
+timeout: the job requests a 6 h session (`role-duration-seconds` in `CI.yml`) because a
+full rebuild runs for hours and the credentials must outlive it (the IAM default of 1 h
+would expire mid-build). The deploy jobs finish in minutes, so the deploy role keeps the
+default 1 h.
+
+To change a permissions policy later, re-run the corresponding `aws iam put-role-policy`
+command (it replaces the named inline policy). For trust policies, use
+`aws iam update-assume-role-policy --role-name <name> --policy-document file://<file>`.
+
+Locally, `VersionsJSONUtil.main` sends unsigned requests when no AWS credentials are in
+the environment, which the public bucket accepts.

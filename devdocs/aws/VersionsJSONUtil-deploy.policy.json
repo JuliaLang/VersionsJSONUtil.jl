@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DeployVersionsJSON",
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:PutObjectAcl"],
+      "Resource": [
+        "arn:aws:s3:::julialang2/bin/versions.json",
+        "arn:aws:s3:::julialang2/bin/versions-schema.json"
+      ]
+    }
+  ]
+}

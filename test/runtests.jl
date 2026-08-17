@@ -33,11 +33,47 @@ const download_urls = Dict(
         end
     end
 
+    @testset "s3_key / s3_prefix" begin
+        url = "https://julialang-s3.julialang.org/bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz"
+        @test VersionsJSONUtil.s3_key(url) == "bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz"
+        @test VersionsJSONUtil.s3_prefix(url) == "bin/linux/x64/1.6/"
+    end
+
+    @testset "object_info" begin
+        url = "https://julialang-s3.julialang.org/bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz"
+        key = "bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz"
+        entry = (; content_length = 1234, etag = "\"abc\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT")
+        cache = Dict{String, Any}("bin/linux/x64/1.6/" => Dict(key => entry))
+        hit = VersionsJSONUtil.object_info(cache, url)
+        @test hit.status == 200
+        @test hit.content_length == 1234
+        @test hit.etag == "\"abc\""
+        @test hit.last_modified == "Mon, 01 Jan 2024 00:00:00 GMT"
+        # key absent from a successfully listed prefix -> authoritative 404
+        miss = VersionsJSONUtil.object_info(cache, replace(url, "1.6.2" => "1.6.99"))
+        @test miss.status == 404
+        # a failed listing is memoized as `nothing` -> transient
+        failed = Dict{String, Any}("bin/linux/x64/1.6/" => nothing)
+        @test VersionsJSONUtil.object_info(failed, url).status == 0
+    end
+
+    @testset "http_date" begin
+        http_date = VersionsJSONUtil.http_date
+        # ISO 8601 variants as S3 reports them
+        @test http_date("2023-12-26T19:08:53+00:00") == "Tue, 26 Dec 2023 19:08:53 GMT"
+        @test http_date("2023-12-26T19:08:53.000Z") == "Tue, 26 Dec 2023 19:08:53 GMT"
+        @test http_date("2023-12-26T19:08:53Z") == "Tue, 26 Dec 2023 19:08:53 GMT"
+        # unparsable timestamps must not kill the run
+        @test http_date("") === nothing
+        @test http_date("garbage") === nothing
+    end
+
     @testset "action_for_head_status" begin
         action = VersionsJSONUtil.action_for_head_status
         @test action(200, false) == :proceed
         @test action(200, true) == :proceed
-        # never drop an already-published URL on a non-200 (the CDN serves stale 404s)
+        # never drop an already-published URL on a non-200 (safety net against transient
+        # failures and operator mistakes in the bucket)
         @test action(404, true) == :keep_existing
         @test action(500, true) == :keep_existing
         # a 404 for an unknown URL: that version/platform doesn't exist
