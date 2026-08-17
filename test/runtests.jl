@@ -27,6 +27,18 @@ const download_urls = Dict(
 )
 
 @testset "VersionsJSONUtil.jl" begin
+    @testset "GitHub API headers" begin
+        headers = VersionsJSONUtil.github_api_headers(nothing)
+        @test ("Accept" => "application/vnd.github+json") in headers
+        @test !any(first(header) == "Authorization" for header in headers)
+
+        headers = VersionsJSONUtil.github_api_headers("")
+        @test !any(first(header) == "Authorization" for header in headers)
+
+        headers = VersionsJSONUtil.github_api_headers("read-only-token")
+        @test ("Authorization" => "Bearer read-only-token") in headers
+    end
+
     @testset "Download URLs for $v" for v in keys(download_urls)
         for (p, url) in download_urls[v]
             @test VersionsJSONUtil.download_url(v, p) == url

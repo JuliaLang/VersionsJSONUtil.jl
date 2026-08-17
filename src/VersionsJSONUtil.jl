@@ -1,6 +1,6 @@
 module VersionsJSONUtil
 
-using HTTP, JSON, Pkg.BinaryPlatforms, WebCacheUtilities, SHA, Lazy
+using HTTP, JSON, Pkg.BinaryPlatforms, SHA
 using Tar: Tar
 import Pkg.BinaryPlatforms: triplet, arch
 import Pkg.PlatformEngines: exe7z
@@ -10,20 +10,26 @@ struct WindowsPortable
     windows::Windows
 end
 WindowsPortable(arch::Symbol) = WindowsPortable(Windows(arch))
-@forward WindowsPortable.windows (up_os, tar_os, triplet, arch)
 
 struct WindowsTarball
     windows::Windows
 end
 WindowsTarball(arch::Symbol) = WindowsTarball(Windows(arch))
-@forward WindowsTarball.windows (up_os, tar_os, triplet, arch)
 
 "Wrapper type to define two jlext methods for macOS DMG and macOS tarball"
 struct MacOSTarball
     macos::MacOS
 end
 MacOSTarball(arch::Symbol) = MacOSTarball(MacOS(arch))
-@forward MacOSTarball.macos (up_os, tar_os, triplet, arch)
+
+# Forward the platform queries to the wrapped platform
+unwrap(p::WindowsPortable) = p.windows
+unwrap(p::WindowsTarball) = p.windows
+unwrap(p::MacOSTarball) = p.macos
+const WrappedPlatform = Union{WindowsPortable, WindowsTarball, MacOSTarball}
+for f in (:up_os, :tar_os, :triplet, :arch)
+    @eval $f(p::WrappedPlatform) = $f(unwrap(p))
+end
 
 up_os(p::Windows) = "winnt"
 up_os(p::MacOS) = "mac"
@@ -133,14 +139,36 @@ function tarball_git_tree_hash(; tarball_path::AbstractString, algorithm::Abstra
     return open(io -> Tar.tree_hash(io; algorithm), `$(exe7z()) x $tarball_path -so`)
 end
 
-# Get list of tags from the Julia repo
-function get_tags()
+function github_api_headers(token::Union{Nothing, AbstractString})
+    headers = ["Accept" => "application/vnd.github+json"]
+    if token !== nothing && !isempty(token)
+        push!(headers, "Authorization" => "Bearer $(token)")
+    end
+    return headers
+end
+
+# Get list of tags from the Julia repo. Always fetched fresh: a cached tag list
+# that predates a just-pushed tag makes the only_version dispatch path fail.
+# GitHub's matching-refs endpoint is not paginated and returns all matching tags.
+# Set GITHUB_TOKEN to authenticate; a fine-grained token needs only Contents: read.
+function get_tags(;
+    github_token::Union{Nothing, AbstractString} = get(ENV, "GITHUB_TOKEN", nothing),
+)
     @info("Probing for tag list...")
-    tags_json_path = WebCacheUtilities.download_to_cache(
-        "julia_tags.json",
+    response = HTTP.get(
         "https://api.github.com/repos/JuliaLang/julia/git/refs/tags",
+        github_api_headers(github_token),
     )
-    JSON.parse(String(read(tags_json_path)))
+    return JSON.parse(String(response.body))
+end
+
+function download_file(url, dest_path)
+    response = open(io -> HTTP.get(url; response_stream = io), dest_path, "w")
+    if response.status != 200
+        rm(dest_path; force = true)
+        error("Unable to download $(url)")
+    end
+    return dest_path
 end
 
 # ------------------------------------------------------------------------------------------
@@ -272,6 +300,7 @@ function delete_filedicts_for_url!(meta, version, url)
 end
 
 function main(out_path; only_version = nothing)
+    downloads_dir = mktempdir()
     tags = get_tags()
     tag_versions = filter(x -> x !== nothing, [vnum_maybe(basename(t["ref"])) for t in tags])
 
@@ -317,7 +346,7 @@ function main(out_path; only_version = nothing)
             local filepath
             try
                 print(stdout, "Downloading $(filename)...")
-                filepath = WebCacheUtilities.download_to_cache(filename, url)
+                filepath = download_file(url, joinpath(downloads_dir, filename))
             catch ex
                 if isa(ex, InterruptException)
                     rethrow(ex)
@@ -344,29 +373,13 @@ function main(out_path; only_version = nothing)
                 error("Unsupported file extension in filename: $(filename)")
             end
 
-            tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
-                open(filepath, "r") do io
-                    open(tarball_hash_path, "w") do hash_io
-                        write(hash_io, bytes2hex(sha256(io)))
-                    end
-                end
-            end
-            tarball_hash = String(read(tarball_hash_path))
+            tarball_hash = open(io -> bytes2hex(sha256(io)), filepath, "r")
 
             if extension == "tar.gz" && !(url in tarball_git_tree_hash_skiplist)
-                tarball_git_tree_hashes = Dict{String, String}()
-                tree_hash_path_sha1 = hit_file_cache("$(filename).git-tree-sha1") do tree_hash_path
-                    open(tree_hash_path, "w") do hash_io
-                        write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha1"))
-                    end
-                end
-                tree_hash_path_sha256 = hit_file_cache("$(filename).git-tree-sha256") do tree_hash_path
-                    open(tree_hash_path, "w") do hash_io
-                        write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha256"))
-                    end
-                end
-                tarball_git_tree_hashes["git-tree-sha1"] = String(read(tree_hash_path_sha1))
-                tarball_git_tree_hashes["git-tree-sha256"] = String(read(tree_hash_path_sha256))
+                tarball_git_tree_hashes = Dict{String, String}(
+                    "git-tree-sha1" => tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha1"),
+                    "git-tree-sha256" => tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha256"),
+                )
             else
                 tarball_git_tree_hashes = nothing
             end
@@ -385,8 +398,9 @@ function main(out_path; only_version = nothing)
                 asc_url = string(url, ".asc")
                 print(stdout, "    Downloading $(basename(asc_url))")
                 try
-                    asc_filepath = WebCacheUtilities.download_to_cache(basename(asc_url), asc_url)
+                    asc_filepath = download_file(asc_url, joinpath(downloads_dir, basename(asc_url)))
                     asc_signature = String(read(asc_filepath))
+                    rm(asc_filepath)
                     println(stdout, " ✓")
                 catch ex
                     if isa(ex, InterruptException)
