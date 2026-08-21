@@ -1,0 +1,133 @@
+{
+    "$schema": "http://json-schema.org/draft-06/schema#",
+    "type": "object",
+    "propertyNames": {
+        "pattern": "^([0-9]+\\.[0-9]+-)?nightly$"
+    },
+    "additionalProperties": {
+        "$ref": "#/definitions/Channel"
+    },
+    "definitions": {
+        "Channel": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/File"
+                    }
+                }
+            },
+            "required": [
+                "files"
+            ],
+            "title": "Channel"
+        },
+        "File": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "triplet": {
+                    "$ref": "#/definitions/Triplet"
+                },
+                "kind": {
+                    "$ref": "#/definitions/Kind"
+                },
+                "arch": {
+                    "$ref": "#/definitions/Arch"
+                },
+                "os": {
+                    "$ref": "#/definitions/OS"
+                },
+                "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                },
+                "asc-url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://.*\\.asc$"
+                },
+                "extension": {
+                    "$ref": "#/definitions/FileExtension"
+                },
+                "variants": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                }
+            },
+            "required": [
+                "arch",
+                "extension",
+                "kind",
+                "os",
+                "triplet",
+                "url"
+            ],
+            "title": "File"
+        },
+        "Arch": {
+            "type": "string",
+            "enum": [
+                "x86_64",
+                "i686",
+                "powerpc64le",
+                "aarch64",
+                "armv7l"
+            ],
+            "title": "Arch"
+        },
+        "Kind": {
+            "type": "string",
+            "enum": [
+                "archive",
+                "installer"
+            ],
+            "title": "Kind"
+        },
+        "OS": {
+            "type": "string",
+            "enum": [
+                "mac",
+                "winnt",
+                "linux",
+                "freebsd"
+            ],
+            "title": "OS"
+        },
+        "Triplet": {
+            "type": "string",
+            "enum": [
+                "x86_64-apple-darwin14",
+                "x86_64-w64-mingw32",
+                "i686-w64-mingw32",
+                "x86_64-linux-gnu",
+                "i686-linux-gnu",
+                "powerpc64le-linux-gnu",
+                "aarch64-linux-gnu",
+                "armv7l-linux-gnueabihf",
+                "x86_64-unknown-freebsd11.1",
+                "x86_64-linux-musl",
+                "aarch64-apple-darwin14"
+            ],
+            "title": "Triplet"
+        },
+        "FileExtension": {
+            "type": "string",
+            "enum": [
+                "dmg",
+                "exe",
+                "tar.gz",
+                "zip"
+            ],
+            "title": "FileExtension"
+        }
+    }
+}
