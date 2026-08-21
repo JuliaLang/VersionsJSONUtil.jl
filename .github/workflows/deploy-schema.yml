@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "schema.json"
+      - "nightlies-schema.json"
       - ".github/workflows/deploy-schema.yml"
     branches:
       - "main"
@@ -41,3 +42,9 @@ jobs:
 
       - name: Purge cache
         run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions-schema.json
+
+      - name: Upload nightlies-schema.json to s3
+        run: aws s3 cp nightlies-schema.json s3://${{ env.s3_bucket }}/bin/nightlies-schema.json --acl public-read --no-progress
+
+      - name: Purge cache (nightlies-schema.json)
+        run: curl -X PURGE https://julialang-s3.julialang.org/bin/nightlies-schema.json
