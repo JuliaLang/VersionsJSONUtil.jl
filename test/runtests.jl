@@ -154,6 +154,11 @@ const download_urls = Dict(
         @test nightly_url(Variant(MacOS(:aarch64), "opt")) == base * "macosopt/aarch64/julia-latest-macosopt-aarch64.tar.gz"
         @test nightly_url(Variant(Windows(:x86_64), "opt")) == base * "windowsopt/x86_64/julia-latest-windowsopt-x86_64.tar.gz"
         @test nightly_url(Variant(FreeBSD(:x86_64), "opt")) == base * "freebsdopt/x86_64/julia-latest-freebsdopt-x86_64.tar.gz"
+        # the nogpl builds are uploaded to their own bucket
+        nogpl = "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/"
+        @test nightly_url(Variant(Linux(:x86_64), "nogpl")) == nogpl * "linuxnogpl/x86_64/julia-latest-linuxnogpl-x86_64.tar.gz"
+        @test nightly_url(Variant(MacOS(:aarch64), "nogpl"), v"1.12") == nogpl * "macosnogpl/aarch64/1.12/julia-latest-macosnogpl-aarch64.tar.gz"
+        @test nightly_url(Variant(Windows(:x86_64), "nogpl")) == nogpl * "windowsnogpl/x86_64/julia-latest-windowsnogpl-x86_64.tar.gz"
     end
 
     @testset "nightly_platforms" begin
@@ -166,6 +171,7 @@ const download_urls = Dict(
         @test length(variants) == nbase * length(VersionsJSONUtil.nightly_variants)
         @test any(v -> v.name == "opt" && triplet(v) == "x86_64-linux-gnu", variants)
         @test any(v -> v.name == "assert" && triplet(v) == "aarch64-linux-gnu", variants)
+        @test any(v -> v.name == "nogpl" && triplet(v) == "x86_64-w64-mingw32", variants)
         @test allunique(VersionsJSONUtil.nightly_url.(platforms))
     end
 
@@ -173,7 +179,7 @@ const download_urls = Dict(
         nightly_file_dict = VersionsJSONUtil.nightly_file_dict
         url = "https://julialangnightlies-s3.julialang.org/bin/linuxopt/x86_64/julia-latest-linuxopt-x86_64.tar.gz"
         d = nightly_file_dict(Variant(Linux(:x86_64), "opt"), url; asc_url = url * ".asc")
-        @test Set(keys(d)) == Set(["triplet", "os", "arch", "kind", "extension", "url", "asc-url", "variants"])
+        @test Set(keys(d)) == Set(["triplet", "os", "arch", "kind", "extension", "url", "asc-url", "variant"])
         @test d["triplet"] == "x86_64-linux-gnu"
         @test d["os"] == "linux"
         @test d["arch"] == "x86_64"
@@ -181,7 +187,7 @@ const download_urls = Dict(
         @test d["extension"] == "tar.gz"
         @test d["url"] == url
         @test d["asc-url"] == url * ".asc"
-        @test d["variants"] == ["opt"]
+        @test d["variant"] == "opt"
 
         url = "https://julialangnightlies-s3.julialang.org/bin/macos/aarch64/julia-latest-macos-aarch64.dmg"
         d = nightly_file_dict(MacOS(:aarch64), url)
@@ -195,7 +201,7 @@ const download_urls = Dict(
         @test d["os"] == "winnt"
         @test d["arch"] == "x86_64"
         @test d["kind"] == "installer"
-        @test !haskey(d, "variants")
+        @test !haskey(d, "variant")
     end
 
     @testset "candidate_series" begin

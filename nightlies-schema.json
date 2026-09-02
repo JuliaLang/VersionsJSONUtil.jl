@@ -17,6 +17,12 @@
                     "items": {
                         "$ref": "#/definitions/File"
                     }
+                },
+                "variants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/VariantFile"
+                    }
                 }
             },
             "required": [
@@ -52,15 +58,6 @@
                 },
                 "extension": {
                     "$ref": "#/definitions/FileExtension"
-                },
-                "variants": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                        "pattern": "^[a-z0-9]+$"
-                    },
-                    "minItems": 1,
-                    "uniqueItems": true
                 }
             },
             "required": [
@@ -72,6 +69,51 @@
                 "url"
             ],
             "title": "File"
+        },
+        "VariantFile": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "triplet": {
+                    "$ref": "#/definitions/Triplet"
+                },
+                "kind": {
+                    "$ref": "#/definitions/Kind"
+                },
+                "arch": {
+                    "$ref": "#/definitions/Arch"
+                },
+                "os": {
+                    "$ref": "#/definitions/OS"
+                },
+                "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://"
+                },
+                "asc-url": {
+                    "type": "string",
+                    "format": "uri",
+                    "pattern": "^https://.*\\.asc$"
+                },
+                "extension": {
+                    "$ref": "#/definitions/FileExtension"
+                },
+                "variant": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9]+$"
+                }
+            },
+            "required": [
+                "arch",
+                "extension",
+                "kind",
+                "os",
+                "triplet",
+                "url",
+                "variant"
+            ],
+            "title": "VariantFile"
         },
         "Arch": {
             "type": "string",

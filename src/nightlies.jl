@@ -9,23 +9,28 @@
 # through the server's ETag / Last-Modified headers (as juliaup does).
 #
 # Channels follow the juliaup vocabulary: `nightly` tracks `master`, `x.y-nightly` tracks
-# the x.y release series (`release-x.y` once that branch exists, `master` before). Files
-# are described with the same keys as in versions.json (minus version, size and hashes),
-# plus:
-#   "variants": build variants of the standard binary, e.g. ["opt"] for the PGO+LTO+BOLT
-#               optimized build. Absent for the standard build. A variant has the same
-#               triplet/os/arch as the standard build it derives from, so consumers that
-#               pick files by platform must filter on this key.
-#   "asc-url":  URL of the detached GPG signature, when one is published.
+# the x.y release series (`release-x.y` once that branch exists, `master` before). Each
+# channel has:
+#   "files":    the standard builds, described with the same keys as in versions.json
+#               (minus version, size and hashes), plus "asc-url", the URL of the detached
+#               GPG signature when one is published.
+#   "variants": build variants of the standard binaries (e.g. the PGO+LTO+BOLT optimized
+#               build, or the GPL-free build), as a separate list so that consumers
+#               selecting a file from "files" by platform never pick up a variant by
+#               accident. Entries have the keys of "files" plus "variant", the variant's
+#               name. Absent when the channel has no variants. This is the shape intended
+#               for variants of releases in versions.json.
 
 const nightlies_base_url = "https://julialangnightlies-s3.julialang.org/bin/"
+const nogpl_nightlies_base_url = "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/"
 
-# Build variants published next to the standard nightlies. julia-buildkite names the
-# artifacts of a variant by appending its name to the OS (the `OS` of its
+# Build variants of the nightlies, and the bucket they are uploaded to. julia-buildkite
+# names the artifacts of a variant by appending its name to the OS (the `OS` of its
 # utilities/extract_triplet.sh), e.g. `bin/linuxopt/x86_64/julia-latest-linuxopt-x86_64.tar.gz`.
 const nightly_variants = [
-    "opt",     # PGO + LTO + BOLT optimized build
-    "assert",  # build with Julia and LLVM assertions enabled
+    "opt"    => nightlies_base_url,        # PGO + LTO + BOLT optimized build
+    "assert" => nightlies_base_url,        # build with Julia and LLVM assertions enabled
+    "nogpl"  => nogpl_nightlies_base_url,  # build without GPL-licensed dependencies
 ]
 
 # The platform types of `julia_platforms` (as opposed to its wrappers selecting another
@@ -36,8 +41,13 @@ const BasePlatform = Union{Linux, MacOS, Windows, FreeBSD}
 struct Variant{P <: BasePlatform}
     platform::P
     name::String
+    base_url::String
 end
+Variant(platform, name) = Variant(platform, name, Dict(nightly_variants)[name])
 @forward Variant.platform (up_os, tar_os, triplet, arch)
+
+nightly_base_url(p) = nightlies_base_url
+nightly_base_url(v::Variant) = v.base_url
 
 jlext(v::Variant) = "tar.gz"
 meta_os(v::Variant) = meta_os(v.platform)
@@ -72,7 +82,7 @@ nightly_name(v::Variant) = "julia-latest-$(nightly_os(v))-$(arch(v.platform))"
 function nightly_url(platform, series::Union{Nothing, VersionNumber} = nothing)
     folder = series === nothing ? "" : "$(series.major).$(series.minor)/"
     return string(
-        nightlies_base_url,
+        nightly_base_url(platform),
         nightly_os(platform), "/",
         nightly_arch(platform), "/",
         folder,
@@ -84,7 +94,7 @@ end
 # don't know which of these exist and simply probe them all.
 function nightly_platforms()
     base = filter(p -> p isa BasePlatform, julia_platforms)
-    return vcat(julia_platforms, [Variant(p, name) for name in nightly_variants for p in base])
+    return vcat(julia_platforms, [Variant(p, name, url) for (name, url) in nightly_variants for p in base])
 end
 
 function nightly_file_dict(platform, url; asc_url = nothing)
@@ -101,15 +111,16 @@ function nightly_file_dict(platform, url; asc_url = nothing)
         file_dict["asc-url"] = asc_url
     end
     if platform isa Variant
-        file_dict["variants"] = [platform.name]
+        file_dict["variant"] = platform.name
     end
     return file_dict
 end
 
-# The files of one channel: every probed platform whose URL exists. A 404 means the
-# platform isn't built for this channel; any other failure is logged and the file is left
-# out of this run (the next run will see it again).
-function probe_nightly_files(series)
+# The files of one channel, as a channel dict: every probed platform whose URL exists, the
+# standard builds under "files" and the variants under "variants". A 404 means the platform
+# isn't built for this channel; any other failure is logged and the file is left out of this
+# run (the next run will see it again).
+function probe_nightly_channel(series)
     platforms = nightly_platforms()
     urls = [nightly_url(p, series) for p in platforms]
     heads = asyncmap(head_url, urls; ntasks = 8)
@@ -124,10 +135,17 @@ function probe_nightly_files(series)
     # Signatures are only published for tarballs; record the ones that exist.
     asc_urls = [jlext(p) == "tar.gz" ? url * ".asc" : nothing for (p, url) in found]
     asc_heads = asyncmap(u -> u === nothing ? nothing : head_url(u), asc_urls; ntasks = 8)
-    return [
-        nightly_file_dict(p, url; asc_url = (h !== nothing && h.status == 200) ? asc_url : nothing)
-        for ((p, url), asc_url, h) in zip(found, asc_urls, asc_heads)
-    ]
+    files = []
+    variants = []
+    for ((p, url), asc_url, h) in zip(found, asc_urls, asc_heads)
+        file_dict = nightly_file_dict(p, url; asc_url = (h !== nothing && h.status == 200) ? asc_url : nothing)
+        push!(p isa Variant ? variants : files, file_dict)
+    end
+    channel = Dict{String, Any}("files" => files)
+    if !isempty(variants)
+        channel["variants"] = variants
+    end
+    return channel
 end
 
 # The x.y series that may have nightlies: every series with a tag, and the next two, so
@@ -149,7 +167,7 @@ function nightlies(out_path)
     # (JSON.print writes keys sorted, so the output is deterministic)
     meta = Dict{String, Any}()
     @info "Probing nightly"
-    meta["nightly"] = Dict("files" => probe_nightly_files(nothing))
+    meta["nightly"] = probe_nightly_channel(nothing)
     for series in candidate_series(tag_versions)
         channel = "$(series.major).$(series.minor)-nightly"
         # Nightlies of inactive series expire from the bucket. Check the tier-1 Linux
@@ -158,9 +176,9 @@ function nightlies(out_path)
             continue
         end
         @info "Probing $(channel)"
-        files = probe_nightly_files(series)
-        if !isempty(files)
-            meta[channel] = Dict("files" => files)
+        channel_dict = probe_nightly_channel(series)
+        if !isempty(channel_dict["files"])
+            meta[channel] = channel_dict
         end
     end
 

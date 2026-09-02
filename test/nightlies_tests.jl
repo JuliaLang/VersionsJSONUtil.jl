@@ -14,16 +14,22 @@ const dict = JSON.parsefile(filename)
     for (channel, channel_dict) in pairs(dict)
         @testset "$(channel)" begin
             @test occursin(r"^(\d+\.\d+-)?nightly$", channel)
-            @test collect(keys(channel_dict)) == ["files"]
+            @test collect(keys(channel_dict)) ⊆ ["files", "variants"]
+            @test haskey(channel_dict, "files")
 
             files = channel_dict["files"]
             @test files isa AbstractArray
             @test !isempty(files)
+            variants = get(channel_dict, "variants", [])
+            @test variants isa AbstractArray
+            # (an absent "variants" is how an empty one is expressed)
+            @test !haskey(channel_dict, "variants") || !isempty(variants)
 
-            # (triplet, extension, variants) identifies a file within a channel
+            # (triplet, extension, variant) identifies a file within a channel
             found = Set()
 
-            for filedict in files
+            for (list, filedict) in Iterators.flatten((zip(Iterators.repeated("files"), files),
+                                                       zip(Iterators.repeated("variants"), variants)))
                 required_keys = [
                     "arch",
                     "extension",
@@ -34,8 +40,10 @@ const dict = JSON.parsefile(filename)
                 ]
                 optional_keys = [
                     "asc-url",
-                    "variants",
                 ]
+                if list == "variants"
+                    push!(required_keys, "variant")
+                end
                 @test required_keys ⊆ collect(keys(filedict))
                 @test collect(keys(filedict)) ⊆ union(required_keys, optional_keys)
 
@@ -58,7 +66,8 @@ const dict = JSON.parsefile(filename)
                 ]
 
                 url = filedict["url"]
-                @test startswith(url, "https://julialangnightlies-s3.julialang.org/bin/")
+                @test startswith(url, "https://julialangnightlies-s3.julialang.org/bin/") ||
+                      startswith(url, "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/")
                 @test endswith(url, "." * filedict["extension"])
                 # every URL is a "latest" one: the file behind it changes with every build
                 @test occursin("/julia-latest-", url)
@@ -74,17 +83,16 @@ const dict = JSON.parsefile(filename)
                     @test filedict["extension"] == "tar.gz"
                 end
 
-                variants = get(filedict, "variants", String[])
-                if haskey(filedict, "variants")
-                    @test variants isa AbstractVector
-                    @test !isempty(variants)
-                    @test all(v -> occursin(r"^[a-z0-9]+$", v), variants)
-                    @test allunique(variants)
+                variant = get(filedict, "variant", nothing)
+                if list == "variants"
+                    @test occursin(r"^[a-z0-9]+$", variant)
                     # only published as tarballs
                     @test filedict["extension"] == "tar.gz"
+                    # the nogpl builds live in their own bucket
+                    @test (variant == "nogpl") == startswith(url, "https://julialang-nogpl.s3.amazonaws.com/")
                 end
 
-                key = (filedict["triplet"], filedict["extension"], variants)
+                key = (filedict["triplet"], filedict["extension"], variant)
                 @test !(key in found)
                 push!(found, key)
             end
@@ -92,11 +100,11 @@ const dict = JSON.parsefile(filename)
             if channel == "nightly"
                 @testset "Tier 1 platforms always have nightlies" begin
                     for key in [
-                        ("x86_64-linux-gnu", "tar.gz", []),
-                        ("x86_64-w64-mingw32", "tar.gz", []),
-                        ("x86_64-w64-mingw32", "exe", []),
-                        ("aarch64-apple-darwin14", "tar.gz", []),
-                        ("aarch64-apple-darwin14", "dmg", []),
+                        ("x86_64-linux-gnu", "tar.gz", nothing),
+                        ("x86_64-w64-mingw32", "tar.gz", nothing),
+                        ("x86_64-w64-mingw32", "exe", nothing),
+                        ("aarch64-apple-darwin14", "tar.gz", nothing),
+                        ("aarch64-apple-darwin14", "dmg", nothing),
                     ]
                         @test key in found
                     end

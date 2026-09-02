@@ -18,6 +18,9 @@ on:
       - "README.md"
   pull_request:
   merge_group: # GitHub Merge Queue
+  schedule:
+    # Refresh nightlies.json: channels come and go with release branches, independently of releases.
+    - cron: "0 6 * * *"
 
 concurrency:
   # Skip intermediate builds: all builds except for builds on the `master` branch
@@ -64,7 +67,8 @@ jobs:
     # This job takes a long time (1+ hours).
     # So we intentionally skip this job on PR runs.
     # But we still run this job on Merge Queue jobs.
-    if: github.event_name != 'pull_request'
+    # (Scheduled runs are only there to refresh nightlies.json.)
+    if: github.event_name != 'pull_request' && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -203,9 +207,10 @@ jobs:
 
   upload-nightlies-to-s3:
     # Deployed separately from versions.json: a hiccup probing the nightlies bucket must
-    # not hold up a release's versions.json update, and vice versa.
+    # not hold up a release's versions.json update, and vice versa. Also runs on the
+    # daily schedule, since the set of channels changes with release branches, not releases.
     needs: [package-tests, nightlies]
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
