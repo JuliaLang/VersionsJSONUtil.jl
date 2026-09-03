@@ -156,6 +156,7 @@ function get_tags(;
 )
     @info("Probing for tag list...")
     response = HTTP.get(
+        # This API endpoint is not paginated
         "https://api.github.com/repos/JuliaLang/julia/git/refs/tags",
         github_api_headers(github_token),
     )
