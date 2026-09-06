@@ -17,9 +17,11 @@
 #   "variants": build variants of the standard binaries (e.g. the PGO+LTO+BOLT optimized
 #               build, or the GPL-free build), as a separate list so that consumers
 #               selecting a file from "files" by platform never pick up a variant by
-#               accident. Entries have the keys of "files" plus "variant", the variant's
-#               name. Absent when the channel has no variants. This is the shape intended
-#               for variants of releases in versions.json.
+#               accident. Entries have the keys of "files" plus "variants", the names of
+#               the variants applied to the build (a list, so that combinations can be
+#               expressed later; julia-buildkite currently only ever builds one). Absent
+#               when the channel has no variants. This is the shape intended for variants
+#               of releases in versions.json.
 
 const nightlies_base_url = "https://julialangnightlies-s3.julialang.org/bin/"
 const nogpl_nightlies_base_url = "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/"
@@ -111,7 +113,7 @@ function nightly_file_dict(platform, url; asc_url = nothing)
         file_dict["asc-url"] = asc_url
     end
     if platform isa Variant
-        file_dict["variant"] = platform.name
+        file_dict["variants"] = [platform.name]
     end
     return file_dict
 end

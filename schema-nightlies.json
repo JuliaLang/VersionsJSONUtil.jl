@@ -49,7 +49,15 @@
                 "url": {
                     "type": "string",
                     "format": "uri",
-                    "pattern": "^https://"
+                    "qt-uri-protocols": [
+                        "https"
+                    ],
+                    "qt-uri-extensions": [
+                        ".dmg",
+                        ".exe",
+                        ".gz",
+                        ".zip"
+                    ]
                 },
                 "asc-url": {
                     "type": "string",
@@ -89,7 +97,15 @@
                 "url": {
                     "type": "string",
                     "format": "uri",
-                    "pattern": "^https://"
+                    "qt-uri-protocols": [
+                        "https"
+                    ],
+                    "qt-uri-extensions": [
+                        ".dmg",
+                        ".exe",
+                        ".gz",
+                        ".zip"
+                    ]
                 },
                 "asc-url": {
                     "type": "string",
@@ -99,9 +115,14 @@
                 "extension": {
                     "$ref": "#/definitions/FileExtension"
                 },
-                "variant": {
-                    "type": "string",
-                    "pattern": "^[a-z0-9]+$"
+                "variants": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
                 }
             },
             "required": [
@@ -111,7 +132,7 @@
                 "os",
                 "triplet",
                 "url",
-                "variant"
+                "variants"
             ],
             "title": "VariantFile"
         },

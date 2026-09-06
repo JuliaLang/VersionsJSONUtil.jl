@@ -179,7 +179,7 @@ const download_urls = Dict(
         nightly_file_dict = VersionsJSONUtil.nightly_file_dict
         url = "https://julialangnightlies-s3.julialang.org/bin/linuxopt/x86_64/julia-latest-linuxopt-x86_64.tar.gz"
         d = nightly_file_dict(Variant(Linux(:x86_64), "opt"), url; asc_url = url * ".asc")
-        @test Set(keys(d)) == Set(["triplet", "os", "arch", "kind", "extension", "url", "asc-url", "variant"])
+        @test Set(keys(d)) == Set(["triplet", "os", "arch", "kind", "extension", "url", "asc-url", "variants"])
         @test d["triplet"] == "x86_64-linux-gnu"
         @test d["os"] == "linux"
         @test d["arch"] == "x86_64"
@@ -187,7 +187,7 @@ const download_urls = Dict(
         @test d["extension"] == "tar.gz"
         @test d["url"] == url
         @test d["asc-url"] == url * ".asc"
-        @test d["variant"] == "opt"
+        @test d["variants"] == ["opt"]
 
         url = "https://julialangnightlies-s3.julialang.org/bin/macos/aarch64/julia-latest-macos-aarch64.dmg"
         d = nightly_file_dict(MacOS(:aarch64), url)
@@ -201,7 +201,7 @@ const download_urls = Dict(
         @test d["os"] == "winnt"
         @test d["arch"] == "x86_64"
         @test d["kind"] == "installer"
-        @test !haskey(d, "variant")
+        @test !haskey(d, "variants")
     end
 
     @testset "candidate_series" begin
@@ -210,5 +210,42 @@ const download_urls = Dict(
         @test candidate_series([v"1.12.0", v"1.13.0-rc3", v"1.12.5", v"0.7.0"]) ==
             [v"1.15", v"1.14", v"1.13", v"1.12", v"0.7"]
         @test candidate_series([v"1.13.0"]) == [v"1.15", v"1.14", v"1.13"]
+    end
+
+    # schema-nightlies.json duplicates the definitions of schema.json (JSON Schema draft-06
+    # can't compose object definitions that forbid additional properties), so pin the two to
+    # each other: they may only differ in what nightlies can't record.
+    @testset "schema-nightlies.json does not drift from schema.json" begin
+        release = JSON.parsefile(joinpath(@__DIR__, "..", "schema.json"))["definitions"]
+        nightly = JSON.parsefile(joinpath(@__DIR__, "..", "schema-nightlies.json"))["definitions"]
+
+        # the release schema's top-level object is replaced by the channel, and variants are new
+        @test Set(keys(nightly)) == union(setdiff(Set(keys(release)), ["WelcomeValue"]), ["Channel", "VariantFile"])
+
+        # the enumerations are shared verbatim
+        for name in ["Arch", "Kind", "OS", "Triplet", "FileExtension"]
+            @test release[name] == nightly[name]
+        end
+
+        # the nightlies File is the release File minus everything content-specific (a nightly
+        # URL is overwritten by every build), with the inlined signature replaced by its URL
+        content_specific = ["version", "size", "sha256", "git-tree-sha1", "git-tree-sha256",
+                            "etag", "last-modified", "asc"]
+        without(dict, keys) = filter(kv -> !(kv.first in keys), dict)
+        release_file = release["File"]
+        nightly_file = nightly["File"]
+        @test Set(keys(nightly_file)) == Set(keys(release_file))
+        @test without(nightly_file, ["properties", "required"]) == without(release_file, ["properties", "required"])
+        @test without(nightly_file["properties"], ["asc-url"]) == without(release_file["properties"], content_specific)
+        @test haskey(nightly_file["properties"], "asc-url")
+        @test sort(nightly_file["required"]) == sort(setdiff(release_file["required"], content_specific))
+
+        # VariantFile is File plus the required `variants` list
+        variant_file = nightly["VariantFile"]
+        @test variant_file["title"] == "VariantFile"
+        @test without(variant_file, ["properties", "required", "title"]) == without(nightly_file, ["properties", "required", "title"])
+        @test without(variant_file["properties"], ["variants"]) == nightly_file["properties"]
+        @test variant_file["properties"]["variants"]["type"] == "array"
+        @test sort(variant_file["required"]) == sort(vcat(nightly_file["required"], "variants"))
     end
 end

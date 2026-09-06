@@ -167,7 +167,7 @@ jobs:
           fi
 
       - name: Validate nightlies.json against schema
-        run: npx -p ajv-cli@3.3.0 ajv -s nightlies-schema.json -d nightlies.json
+        run: npx -p ajv-cli@3.3.0 ajv -s schema-nightlies.json -d nightlies.json
 
       - run: julia --project test/nightlies_tests.jl nightlies.json
 

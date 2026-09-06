@@ -25,7 +25,7 @@ const dict = JSON.parsefile(filename)
             # (an absent "variants" is how an empty one is expressed)
             @test !haskey(channel_dict, "variants") || !isempty(variants)
 
-            # (triplet, extension, variant) identifies a file within a channel
+            # (triplet, extension, variants) identifies a file within a channel
             found = Set()
 
             for (list, filedict) in Iterators.flatten((zip(Iterators.repeated("files"), files),
@@ -42,7 +42,7 @@ const dict = JSON.parsefile(filename)
                     "asc-url",
                 ]
                 if list == "variants"
-                    push!(required_keys, "variant")
+                    push!(required_keys, "variants")
                 end
                 @test required_keys ⊆ collect(keys(filedict))
                 @test collect(keys(filedict)) ⊆ union(required_keys, optional_keys)
@@ -83,16 +83,20 @@ const dict = JSON.parsefile(filename)
                     @test filedict["extension"] == "tar.gz"
                 end
 
-                variant = get(filedict, "variant", nothing)
+                file_variants = get(filedict, "variants", nothing)
                 if list == "variants"
-                    @test occursin(r"^[a-z0-9]+$", variant)
+                    @test file_variants isa AbstractArray
+                    @test !isempty(file_variants)
+                    @test allunique(file_variants)
+                    @test issorted(file_variants)
+                    @test all(v -> occursin(r"^[a-z0-9]+$", v), file_variants)
                     # only published as tarballs
                     @test filedict["extension"] == "tar.gz"
                     # the nogpl builds live in their own bucket
-                    @test (variant == "nogpl") == startswith(url, "https://julialang-nogpl.s3.amazonaws.com/")
+                    @test ("nogpl" in file_variants) == startswith(url, "https://julialang-nogpl.s3.amazonaws.com/")
                 end
 
-                key = (filedict["triplet"], filedict["extension"], variant)
+                key = (filedict["triplet"], filedict["extension"], file_variants)
                 @test !(key in found)
                 push!(found, key)
             end
