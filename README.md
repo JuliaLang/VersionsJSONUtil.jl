@@ -14,6 +14,31 @@ S3 URL:
 
 It can be used to validate the versions file or to [generate code](https://json-schema.org/implementations.html) from the schema.
 
+## `nightlies.json`
+
+S3 URL: https://julialang-s3.julialang.org/bin/nightlies.json
+
+**`nightlies.json` is experimental: its format may still change in breaking ways.**
+
+`nightlies.json` is the counterpart of `versions.json` for in-development builds. Its top-level keys are the
+nightly channels in juliaup's vocabulary: `nightly` (builds of `master`) and `x.y-nightly` (the latest build of the
+x.y release series, i.e. of `release-x.y` once that branch exists). Each channel has a `files` list describing the
+standard builds with the same keys as `versions.json` (`triplet`, `os`, `arch`, `kind`, `extension`, `url`), with two
+differences:
+
+- There is no `version`, `size`, `sha256` or tree hash: every URL is a `julia-latest-*` file that is overwritten
+  after each successful build on its branch, so nothing content-specific can be recorded. Consumers should
+  track changes through the server's `ETag` / `Last-Modified` headers (as juliaup does). The detached signature,
+  when one is published, is referenced by URL in `asc-url` rather than inlined.
+- Build variants of the standard binaries are listed in a separate `variants` list (absent when there are none),
+  so that tools selecting a file from `files` by platform never pick up a variant by accident. Its entries have the
+  keys of `files` plus `variants`, the names of the variants applied to that build: `opt` (the PGO+LTO+BOLT
+  optimized build), `assert` (Julia and LLVM assertions enabled) and `nogpl` (no GPL-licensed dependencies).
+  Every build currently has a single variant; the list leaves room for combinations.
+
+[`schema-nightlies.json`](schema-nightlies.json) contains its JSON Schema. See the
+[devdocs](./devdocs/README.md#nightliesjson) for how the file is generated.
+
 ## Downstream tools using `versions.json`
 
 This is a (not necessarily complete) list of known tools that make use of `versions.json`.

@@ -116,6 +116,21 @@ const tarball_git_tree_hash_skiplist = [
     "https://julialang-s3.julialang.org/bin/linux/x86/0.7/julia-0.7.0-alpha-linux-i686.tar.gz",
 ]
 
+# The `kind` and `extension` fields of a file, from its name.
+function kind_and_extension(filename)
+    if endswith(filename, ".dmg")
+        return ("archive", "dmg")
+    elseif endswith(filename, ".exe")
+        return ("installer", "exe")
+    elseif endswith(filename, ".tar.gz")
+        return ("archive", "tar.gz")
+    elseif endswith(filename, ".zip")
+        return ("archive", "zip")
+    else
+        error("Unsupported file extension in filename: $(filename)")
+    end
+end
+
 function vnum_maybe(x::AbstractString)
     try
         return VersionNumber(x)
@@ -328,21 +343,7 @@ function main(out_path; only_version = nothing)
             number_urls_success += 1
             println(stdout, " ✓")
 
-            if endswith(filename, ".dmg")
-                kind = "archive"
-                extension = "dmg"
-            elseif endswith(filename, ".exe")
-                kind = "installer"
-                extension = "exe"
-            elseif endswith(filename, ".tar.gz")
-                kind = "archive"
-                extension = "tar.gz"
-            elseif endswith(filename, ".zip")
-                kind = "archive"
-                extension = "zip"
-            else
-                error("Unsupported file extension in filename: $(filename)")
-            end
+            kind, extension = kind_and_extension(filename)
 
             tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
                 open(filepath, "r") do io
@@ -439,5 +440,7 @@ function main(out_path; only_version = nothing)
     checkpoint(out_path, meta)
     @info "Tried $(number_urls_tried) URLs, successfully downloaded $(number_urls_success). Carried over $(number_carried_over) up-to-date entries."
 end
+
+include("nightlies.jl")
 
 end # module

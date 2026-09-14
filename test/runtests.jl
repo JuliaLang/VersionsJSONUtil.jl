@@ -1,6 +1,6 @@
 using Pkg.BinaryPlatforms, JSON
 using VersionsJSONUtil
-import VersionsJSONUtil: WindowsPortable, WindowsTarball, MacOSTarball
+import VersionsJSONUtil: WindowsPortable, WindowsTarball, MacOSTarball, Variant
 using Test
 
 const download_urls = Dict(
@@ -120,5 +120,132 @@ const download_urls = Dict(
             meta3 = VersionsJSONUtil.load_seed(out_path)
             @test haskey(meta3, v"1.6.2") && length(meta3) == 1
         end
+    end
+
+    @testset "kind_and_extension" begin
+        kind_and_extension = VersionsJSONUtil.kind_and_extension
+        @test kind_and_extension("julia-1.6.2-linux-x86_64.tar.gz") == ("archive", "tar.gz")
+        @test kind_and_extension("julia-1.6.2-win64.zip") == ("archive", "zip")
+        @test kind_and_extension("julia-1.6.2-win64.exe") == ("installer", "exe")
+        @test kind_and_extension("julia-1.6.2-mac64.dmg") == ("archive", "dmg")
+        @test_throws ErrorException kind_and_extension("julia-1.6.2-linux-x86_64.tar.xz")
+    end
+
+    @testset "Nightly download URLs" begin
+        nightly_url = VersionsJSONUtil.nightly_url
+        base = "https://julialangnightlies-s3.julialang.org/bin/"
+        # the names juliaup and julialang.org use
+        @test nightly_url(Linux(:x86_64)) == base * "linux/x86_64/julia-latest-linux-x86_64.tar.gz"
+        @test nightly_url(Linux(:i686)) == base * "linux/i686/julia-latest-linux-i686.tar.gz"
+        @test nightly_url(Linux(:aarch64), v"1.13") == base * "linux/aarch64/1.13/julia-latest-linux-aarch64.tar.gz"
+        @test nightly_url(Linux(:x86_64; libc = :musl)) == base * "musl/x86_64/julia-latest-musl-x86_64.tar.gz"
+        @test nightly_url(MacOS(:x86_64)) == base * "macos/x86_64/julia-latest-macos-x86_64.dmg"
+        @test nightly_url(MacOSTarball(:aarch64)) == base * "macos/aarch64/julia-latest-macos-aarch64.tar.gz"
+        @test nightly_url(MacOSTarball(:aarch64), v"1.12") == base * "macos/aarch64/1.12/julia-latest-macos-aarch64.tar.gz"
+        @test nightly_url(Windows(:x86_64)) == base * "winnt/x64/julia-latest-win64.exe"
+        @test nightly_url(Windows(:i686)) == base * "winnt/x86/julia-latest-win32.exe"
+        @test nightly_url(WindowsPortable(:x86_64)) == base * "winnt/x64/julia-latest-win64.zip"
+        @test nightly_url(WindowsTarball(:i686), v"1.12") == base * "winnt/x86/1.12/julia-latest-win32.tar.gz"
+        @test nightly_url(FreeBSD(:x86_64)) == base * "freebsd/x86_64/julia-latest-freebsd-x86_64.tar.gz"
+        # variants: julia-buildkite's canonical names only (no winnt/x64 style aliases)
+        @test nightly_url(Variant(Linux(:x86_64), "opt")) == base * "linuxopt/x86_64/julia-latest-linuxopt-x86_64.tar.gz"
+        @test nightly_url(Variant(Linux(:x86_64), "assert"), v"1.14") == base * "linuxassert/x86_64/1.14/julia-latest-linuxassert-x86_64.tar.gz"
+        @test nightly_url(Variant(Linux(:aarch64), "opt")) == base * "linuxopt/aarch64/julia-latest-linuxopt-aarch64.tar.gz"
+        @test nightly_url(Variant(MacOS(:aarch64), "opt")) == base * "macosopt/aarch64/julia-latest-macosopt-aarch64.tar.gz"
+        @test nightly_url(Variant(Windows(:x86_64), "opt")) == base * "windowsopt/x86_64/julia-latest-windowsopt-x86_64.tar.gz"
+        @test nightly_url(Variant(FreeBSD(:x86_64), "opt")) == base * "freebsdopt/x86_64/julia-latest-freebsdopt-x86_64.tar.gz"
+        # the nogpl builds are uploaded to their own bucket
+        nogpl = "https://julialang-nogpl.s3.amazonaws.com/bin-nogpl/"
+        @test nightly_url(Variant(Linux(:x86_64), "nogpl")) == nogpl * "linuxnogpl/x86_64/julia-latest-linuxnogpl-x86_64.tar.gz"
+        @test nightly_url(Variant(MacOS(:aarch64), "nogpl"), v"1.12") == nogpl * "macosnogpl/aarch64/1.12/julia-latest-macosnogpl-aarch64.tar.gz"
+        @test nightly_url(Variant(Windows(:x86_64), "nogpl")) == nogpl * "windowsnogpl/x86_64/julia-latest-windowsnogpl-x86_64.tar.gz"
+    end
+
+    @testset "nightly_platforms" begin
+        platforms = VersionsJSONUtil.nightly_platforms()
+        # every standard platform, plus each variant for each base (non-wrapped) platform
+        @test platforms[1:length(VersionsJSONUtil.julia_platforms)] == VersionsJSONUtil.julia_platforms
+        variants = filter(p -> p isa Variant, platforms)
+        nbase = count(p -> p isa VersionsJSONUtil.BasePlatform, VersionsJSONUtil.julia_platforms)
+        @test nbase == 11
+        @test length(variants) == nbase * length(VersionsJSONUtil.nightly_variants)
+        @test any(v -> v.name == "opt" && triplet(v) == "x86_64-linux-gnu", variants)
+        @test any(v -> v.name == "assert" && triplet(v) == "aarch64-linux-gnu", variants)
+        @test any(v -> v.name == "nogpl" && triplet(v) == "x86_64-w64-mingw32", variants)
+        @test allunique(VersionsJSONUtil.nightly_url.(platforms))
+    end
+
+    @testset "nightly_file_dict" begin
+        nightly_file_dict = VersionsJSONUtil.nightly_file_dict
+        url = "https://julialangnightlies-s3.julialang.org/bin/linuxopt/x86_64/julia-latest-linuxopt-x86_64.tar.gz"
+        d = nightly_file_dict(Variant(Linux(:x86_64), "opt"), url; asc_url = url * ".asc")
+        @test Set(keys(d)) == Set(["triplet", "os", "arch", "kind", "extension", "url", "asc-url", "variants"])
+        @test d["triplet"] == "x86_64-linux-gnu"
+        @test d["os"] == "linux"
+        @test d["arch"] == "x86_64"
+        @test d["kind"] == "archive"
+        @test d["extension"] == "tar.gz"
+        @test d["url"] == url
+        @test d["asc-url"] == url * ".asc"
+        @test d["variants"] == ["opt"]
+
+        url = "https://julialangnightlies-s3.julialang.org/bin/macos/aarch64/julia-latest-macos-aarch64.dmg"
+        d = nightly_file_dict(MacOS(:aarch64), url)
+        @test Set(keys(d)) == Set(["triplet", "os", "arch", "kind", "extension", "url"])
+        @test d["triplet"] == "aarch64-apple-darwin14"
+        @test d["os"] == "mac"
+        @test d["extension"] == "dmg"
+
+        url = "https://julialangnightlies-s3.julialang.org/bin/winnt/x64/julia-latest-win64.exe"
+        d = nightly_file_dict(Windows(:x86_64), url)
+        @test d["os"] == "winnt"
+        @test d["arch"] == "x86_64"
+        @test d["kind"] == "installer"
+        @test !haskey(d, "variants")
+    end
+
+    @testset "candidate_series" begin
+        candidate_series = VersionsJSONUtil.candidate_series
+        # tagged series newest first, followed by the two series after the newest tag
+        @test candidate_series([v"1.12.0", v"1.13.0-rc3", v"1.12.5", v"0.7.0"]) ==
+            [v"1.15", v"1.14", v"1.13", v"1.12", v"0.7"]
+        @test candidate_series([v"1.13.0"]) == [v"1.15", v"1.14", v"1.13"]
+    end
+
+    # schema-nightlies.json duplicates the definitions of schema.json (JSON Schema draft-06
+    # can't compose object definitions that forbid additional properties), so pin the two to
+    # each other: they may only differ in what nightlies can't record.
+    @testset "schema-nightlies.json does not drift from schema.json" begin
+        release = JSON.parsefile(joinpath(@__DIR__, "..", "schema.json"))["definitions"]
+        nightly = JSON.parsefile(joinpath(@__DIR__, "..", "schema-nightlies.json"))["definitions"]
+
+        # the release schema's top-level object is replaced by the channel, and variants are new
+        @test Set(keys(nightly)) == union(setdiff(Set(keys(release)), ["WelcomeValue"]), ["Channel", "VariantFile"])
+
+        # the enumerations are shared verbatim
+        for name in ["Arch", "Kind", "OS", "Triplet", "FileExtension"]
+            @test release[name] == nightly[name]
+        end
+
+        # the nightlies File is the release File minus everything content-specific (a nightly
+        # URL is overwritten by every build), with the inlined signature replaced by its URL
+        content_specific = ["version", "size", "sha256", "git-tree-sha1", "git-tree-sha256",
+                            "etag", "last-modified", "asc"]
+        without(dict, keys) = filter(kv -> !(kv.first in keys), dict)
+        release_file = release["File"]
+        nightly_file = nightly["File"]
+        @test Set(keys(nightly_file)) == Set(keys(release_file))
+        @test without(nightly_file, ["properties", "required"]) == without(release_file, ["properties", "required"])
+        @test without(nightly_file["properties"], ["asc-url"]) == without(release_file["properties"], content_specific)
+        @test haskey(nightly_file["properties"], "asc-url")
+        @test sort(nightly_file["required"]) == sort(setdiff(release_file["required"], content_specific))
+
+        # VariantFile is File plus the required `variants` list
+        variant_file = nightly["VariantFile"]
+        @test variant_file["title"] == "VariantFile"
+        @test without(variant_file, ["properties", "required", "title"]) == without(nightly_file, ["properties", "required", "title"])
+        @test without(variant_file["properties"], ["variants"]) == nightly_file["properties"]
+        @test variant_file["properties"]["variants"]["type"] == "array"
+        @test sort(variant_file["required"]) == sort(vcat(nightly_file["required"], "variants"))
     end
 end
