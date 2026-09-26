@@ -26,7 +26,7 @@ TODO: Write this section.
 
 ### `nightlies.json`: public API
 
-None. All of `nightlies.json` is currently experimental
+None. All of `nightlies.json` is currently experimental.
 
 ### `nightlies.json`: experimental API
 
@@ -48,9 +48,6 @@ differences:
   keys of `files` plus `variants`, the names of the variants applied to that build: `opt` (the PGO+LTO+BOLT
   optimized build), `assert` (Julia and LLVM assertions enabled) and `nogpl` (no GPL-licensed dependencies).
   Every build currently has a single variant; the list leaves room for combinations.
-
-[`schema-nightlies.json`](schema-nightlies.json) contains its JSON Schema. See the
-[devdocs](./devdocs/README.md#nightliesjson) for how the file is generated.
 
 ## 3. Downstream consumers
 
