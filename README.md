@@ -5,7 +5,8 @@
 | `versions.json`  | v1      | https://julialang-s3.julialang.org/bin/versions.json  | https://julialang-s3.julialang.org/bin/versions-schema.json  |
 | `nightlies.json` | v1      | https://julialang-s3.julialang.org/bin/nightlies.json | https://julialang-s3.julialang.org/bin/nightlies-schema.json |
 
-Table of contents:
+## Table of contents
+
 1. [`versions.json`](#1-versionsjson)
 2. [`nightlies.json`](#2-nightliesjson)
 3. [Downstream consumers](#3-downstream-consumers)
