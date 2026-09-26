@@ -26,7 +26,7 @@ TODO: Write this section.
 
 ### `nightlies.json`: public API
 
-None. All of `nightlies.json` is currently experimental.
+None. All of `nightlies.json` is currently experimental. Its format may still change in breaking ways.
 
 ### `nightlies.json`: experimental API
 
@@ -72,20 +72,3 @@ This allows us to check if changes might break downstream tooling.
 See [`./devdocs/README.md`](./devdocs/README.md).
 
 This issue provides background info that explains the motivation: https://github.com/JuliaLang/julia/issues/33817
-
-## END END END
-
-
-## `nightlies.json`
-
-
-
-**`nightlies.json` is experimental: its format may still change in breaking ways.**
-
-
-
-## Downstream tools using `versions.json`
-
-
-
-
