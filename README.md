@@ -7,9 +7,9 @@
 
 Table of contents:
 1. [`versions.json`](#1-versionsjson)
-2. `nightlies.json`
-3. Downstream consumers
-4. Devdocs
+2. [`nightlies.json`](#2-nightliesjson)
+3. [Downstream consumers](#3-downstream-consumers)
+4. [Devdocs](#4-devdocs)
 
 ## 1. `versions.json`
 
