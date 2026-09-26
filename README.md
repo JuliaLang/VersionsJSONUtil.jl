@@ -70,5 +70,3 @@ This allows us to check if changes might break downstream tooling.
 ## 4. Devdocs
 
 See [`./devdocs/README.md`](./devdocs/README.md).
-
-This issue provides background info that explains the motivation: https://github.com/JuliaLang/julia/issues/33817
