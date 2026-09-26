@@ -1,6 +1,6 @@
 # VersionsJSONUtil: Generate `versions.json` files that contain the list of Julia versions
 
-| File             | Version | URL                                                   | Schema                                                       |
+| File             | Version | Canonical URL                                         | Schema                                                       |
 | ---------------- | ------- | ----------------------------------------------------- | ------------------------------------------------------------ |
 | `versions.json`  | v1      | https://julialang-s3.julialang.org/bin/versions.json  | https://julialang-s3.julialang.org/bin/versions-schema.json  |
 | `nightlies.json` | v1      | https://julialang-s3.julialang.org/bin/nightlies.json | https://julialang-s3.julialang.org/bin/nightlies-schema.json |
