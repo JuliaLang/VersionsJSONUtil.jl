@@ -32,7 +32,24 @@ end
                 "stable",
                 "files",
             ]
-            @test Set(collect(keys(ver_dict))) == Set(expected_keys)
+            optional_version_keys = [
+                "variants",
+            ]
+            @test Set(expected_keys) ⊆ Set(collect(keys(ver_dict)))
+            @test Set(collect(keys(ver_dict))) ⊆ union(expected_keys, optional_version_keys)
+
+            # Variant files: like the files below, plus their variant names, and never
+            # mixed into "files"
+            @testset "variants" begin
+                for filedict in get(ver_dict, "variants", [])
+                    @test filedict["variants"] isa AbstractArray
+                    @test !isempty(filedict["variants"])
+                    @test all(v -> v isa AbstractString && occursin(r"^[a-z0-9]+$", v), filedict["variants"])
+                    @test VersionNumber(filedict["version"]) == ver
+                    @test occursin(r"^[0-9a-f]{64}$", filedict["sha256"])
+                    @test filedict["url"] ∉ [f["url"] for f in ver_dict["files"]]
+                end
+            end
 
             @test ver_dict["stable"] isa Bool
             if ver_dict["stable"]
