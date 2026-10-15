@@ -17,6 +17,12 @@
                 },
                 "stable": {
                     "type": "boolean"
+                },
+                "variants": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/VariantFile"
+                    }
                 }
             },
             "required": [
@@ -94,6 +100,86 @@
                 "version"
             ],
             "title": "File"
+        },
+        "VariantFile": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "triplet": {
+                    "$ref": "#/definitions/Triplet"
+                },
+                "kind": {
+                    "$ref": "#/definitions/Kind"
+                },
+                "arch": {
+                    "$ref": "#/definitions/Arch"
+                },
+                "sha256": {
+                    "type": "string"
+                },
+                "git-tree-sha1": {
+                    "type": "string"
+                },
+                "git-tree-sha256": {
+                    "type": "string"
+                },
+                "size": {
+                    "type": "integer"
+                },
+                "etag": {
+                    "type": "string"
+                },
+                "last-modified": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                },
+                "os": {
+                    "$ref": "#/definitions/OS"
+                },
+                "url": {
+                    "type": "string",
+                    "format": "uri",
+                    "qt-uri-protocols": [
+                        "https"
+                    ],
+                    "qt-uri-extensions": [
+                        ".dmg",
+                        ".exe",
+                        ".gz",
+                        ".zip"
+                    ]
+                },
+                "asc": {
+                    "type": "string"
+                },
+                "extension": {
+                    "$ref": "#/definitions/FileExtension"
+                },
+                "variants": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "pattern": "^[a-z0-9]+$"
+                    },
+                    "minItems": 1,
+                    "uniqueItems": true
+                }
+            },
+            "required": [
+                "arch",
+                "extension",
+                "kind",
+                "os",
+                "sha256",
+                "size",
+                "triplet",
+                "url",
+                "variants",
+                "version"
+            ],
+            "title": "VariantFile"
         },
         "Arch": {
             "type": "string",

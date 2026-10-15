@@ -14,6 +14,11 @@ S3 URL:
 
 It can be used to validate the versions file or to [generate code](https://json-schema.org/implementations.html) from the schema.
 
+From Julia 1.14, a version can also have a `variants` list next to `files`: the build variants released with it,
+`opt` (the PGO+LTO+BOLT optimized build) and `assert` (assertions enabled), with the keys of `files` plus `variants`
+as in `nightlies.json` below. They are served under julia-buildkite's canonical names, e.g.
+`bin/linuxopt/x86_64/1.14/julia-1.14.0-linuxopt-x86_64.tar.gz`. Tools that select from `files` never see them.
+
 ## `nightlies.json`
 
 S3 URL: https://julialang-s3.julialang.org/bin/nightlies.json

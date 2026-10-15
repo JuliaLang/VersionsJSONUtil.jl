@@ -244,7 +244,8 @@ function entry_matches_head(file_dict, head; url = "")
 end
 
 # Can this seeded filedict be carried over as-is?
-function filedict_is_complete(file_dict, url)
+function filedict_is_complete(file_dict, url; variant = false)
+    variant && !haskey(file_dict, "variants") && return false
     required = [
         "arch",
         "extension",
@@ -269,20 +270,23 @@ function filedict_is_complete(file_dict, url)
     return true
 end
 
-function find_filedict(meta, version, url)
+# The list of a version's entry that holds the files of `platform`
+list_key(platform) = platform isa Variant ? "variants" : "files"
+
+function find_filedict(meta, version, url, key = "files")
     haskey(meta, version) || return nothing
-    haskey(meta[version], "files") || return nothing
-    for file_dict in meta[version]["files"]
+    haskey(meta[version], key) || return nothing
+    for file_dict in meta[version][key]
         file_dict["url"] == url && return file_dict
     end
     return nothing
 end
 
-function delete_filedicts_for_url!(meta, version, url)
+function delete_filedicts_for_url!(meta, version, url, key = "files")
     # Remove any stale entry so a re-download can't produce duplicates
     haskey(meta, version) || return nothing
-    haskey(meta[version], "files") || return nothing
-    filter!(file_dict -> file_dict["url"] != url, meta[version]["files"])
+    haskey(meta[version], key) || return nothing
+    filter!(file_dict -> file_dict["url"] != url, meta[version][key])
     return nothing
 end
 
@@ -302,11 +306,12 @@ function main(out_path; only_version = nothing)
     number_urls_success = 0
     number_carried_over = 0
     for version in tag_versions
-        for platform in julia_platforms
+        for platform in release_platforms(version)
             url = download_url(version, platform)
             filename = basename(url)
+            key = list_key(platform)
 
-            existing = find_filedict(meta, version, url)
+            existing = find_filedict(meta, version, url, key)
             head = head_url(url)
             action = action_for_head_status(head.status, existing !== nothing)
             if action == :keep_existing
@@ -320,12 +325,13 @@ function main(out_path; only_version = nothing)
                 continue
             end
 
-            if action == :proceed && existing !== nothing && filedict_is_complete(existing, url) &&
+            if action == :proceed && existing !== nothing &&
+                    filedict_is_complete(existing, url; variant = platform isa Variant) &&
                     entry_matches_head(existing, head; url)
                 number_carried_over += 1
                 continue
             end
-            delete_filedicts_for_url!(meta, version, url)
+            delete_filedicts_for_url!(meta, version, url, key)
 
             # Download this URL to a local file
             number_urls_tried += 1
@@ -379,6 +385,9 @@ function main(out_path; only_version = nothing)
                     "files" => Vector{Dict}(),
                 )
             end
+            if !haskey(meta[version], key)
+                meta[version][key] = Vector{Dict}()
+            end
 
             # Test to see if there is an asc signature:
             asc_signature = nothing
@@ -424,10 +433,13 @@ function main(out_path; only_version = nothing)
             if asc_signature !== nothing
                 file_dict["asc"] = asc_signature
             end
+            if platform isa Variant
+                file_dict["variants"] = [platform.name]
+            end
 
             # Right now, all we have are archives, but let's be forward-thinking
             # and make this an array of dictionaries that is easy to extensibly match
-            push!(meta[version]["files"], file_dict)
+            push!(meta[version][key], file_dict)
 
             # Write out new versions of our versions.json as we go
             checkpoint(out_path, meta)
@@ -442,5 +454,35 @@ function main(out_path; only_version = nothing)
 end
 
 include("nightlies.jl")
+
+# ------------------------------------------------------------------------------------------
+# Build variants of releases (the optimized and assertion builds, juliaup's `+opt` and
+# `+assert` channels), in versions.json as a "variants" list next to "files", in the shape
+# of nightlies.json: consumers that select from "files" never see them. They are released
+# under julia-buildkite's canonical names rather than the buildbot-era ones, e.g.
+#     bin/linuxopt/x86_64/1.14/julia-1.14.0-linuxopt-x86_64.tar.gz
+
+# The variants releases come with, and the first version that does
+const release_variants = [
+    "opt"    => v"1.14.0-",
+    "assert" => v"1.14.0-",
+]
+
+function download_url(version::VersionNumber, v::Variant)
+    return string(
+        "https://julialang-s3.julialang.org/bin/",
+        nightly_os(v), "/",
+        nightly_arch(v), "/",
+        version.major, ".", version.minor, "/",
+        "julia-", version, "-", nightly_os(v), "-", nightly_arch(v), ".", jlext(v),
+    )
+end
+
+"The platforms to probe for `version`: `julia_platforms`, and the variants released for it."
+function release_platforms(version::VersionNumber)
+    base = filter(p -> p isa BasePlatform, julia_platforms)
+    variants = [Variant(p, name) for (name, since) in release_variants if version >= since for p in base]
+    return vcat(julia_platforms, variants)
+end
 
 end # module

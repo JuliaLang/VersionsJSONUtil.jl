@@ -175,6 +175,30 @@ const download_urls = Dict(
         @test allunique(VersionsJSONUtil.nightly_url.(platforms))
     end
 
+    @testset "release variants" begin
+        download_url = VersionsJSONUtil.download_url
+        base = "https://julialang-s3.julialang.org/bin/"
+        # canonical julia-buildkite names, as promoted from the nightlies bucket
+        @test download_url(v"1.14.0", Variant(Linux(:x86_64), "opt")) == base * "linuxopt/x86_64/1.14/julia-1.14.0-linuxopt-x86_64.tar.gz"
+        @test download_url(v"1.14.0-rc1", Variant(Linux(:i686), "opt")) == base * "linuxopt/i686/1.14/julia-1.14.0-rc1-linuxopt-i686.tar.gz"
+        @test download_url(v"1.14.1", Variant(MacOS(:aarch64), "opt")) == base * "macosopt/aarch64/1.14/julia-1.14.1-macosopt-aarch64.tar.gz"
+        @test download_url(v"1.14.0", Variant(Windows(:x86_64), "opt")) == base * "windowsopt/x86_64/1.14/julia-1.14.0-windowsopt-x86_64.tar.gz"
+        @test download_url(v"1.14.0", Variant(Linux(:x86_64), "assert")) == base * "linuxassert/x86_64/1.14/julia-1.14.0-linuxassert-x86_64.tar.gz"
+
+        release_platforms = VersionsJSONUtil.release_platforms
+        @test release_platforms(v"1.13.1") == VersionsJSONUtil.julia_platforms
+        for v in (v"1.14.0-alpha1", v"1.14.0", v"2.0.0")
+            platforms = release_platforms(v)
+            @test platforms[1:length(VersionsJSONUtil.julia_platforms)] == VersionsJSONUtil.julia_platforms
+            variants = filter(p -> p isa Variant, platforms)
+            @test Set(p.name for p in variants) == Set(["opt", "assert"])
+            @test allunique(download_url.(v, platforms))
+        end
+
+        @test VersionsJSONUtil.list_key(Linux(:x86_64)) == "files"
+        @test VersionsJSONUtil.list_key(Variant(Linux(:x86_64), "opt")) == "variants"
+    end
+
     @testset "nightly_file_dict" begin
         nightly_file_dict = VersionsJSONUtil.nightly_file_dict
         url = "https://julialangnightlies-s3.julialang.org/bin/linuxopt/x86_64/julia-latest-linuxopt-x86_64.tar.gz"
@@ -240,7 +264,14 @@ const download_urls = Dict(
         @test haskey(nightly_file["properties"], "asc-url")
         @test sort(nightly_file["required"]) == sort(setdiff(release_file["required"], content_specific))
 
-        # VariantFile is File plus the required `variants` list
+        # in both schemas, VariantFile is File plus the required `variants` list
+        release_variant_file = release["VariantFile"]
+        @test without(release_variant_file, ["properties", "required", "title"]) == without(release_file, ["properties", "required", "title"])
+        @test without(release_variant_file["properties"], ["variants"]) == release_file["properties"]
+        @test release_variant_file["properties"]["variants"] == nightly["VariantFile"]["properties"]["variants"]
+        @test sort(release_variant_file["required"]) == sort(vcat(release_file["required"], "variants"))
+        @test release["WelcomeValue"]["properties"]["variants"]["items"]["\$ref"] == "#/definitions/VariantFile"
+
         variant_file = nightly["VariantFile"]
         @test variant_file["title"] == "VariantFile"
         @test without(variant_file, ["properties", "required", "title"]) == without(nightly_file, ["properties", "required", "title"])
