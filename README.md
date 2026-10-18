@@ -1,32 +1,51 @@
 # VersionsJSONUtil: Generate `versions.json` files that contain the list of Julia versions
 
-S3 URL:
-- v1: https://julialang-s3.julialang.org/bin/versions.json
-- v2: [coming soon][^1]
+## Table of contents
 
-[^1]: v2 is not available yet. When it becomes available, the S3 URL will *probably* be `https://julialang-s3.julialang.org/bin/versions.v2.json`
+1. [`versions.json`](#1-docs-for-versionsjson)
+2. [`nightlies.json`](#2-docs-for-nightliesjson)
+3. [Downstream consumers](#3-downstream-consumers)
+4. [Devdocs](#4-devdocs)
 
+## 1. Docs for `versions.json`
 
+| File             | Version | Canonical URL                                         | Schema                                                       |
+| ---------------- | ------- | ----------------------------------------------------- | ------------------------------------------------------------ |
+| `versions.json`  | v1      | https://julialang-s3.julialang.org/bin/versions.json  | https://julialang-s3.julialang.org/bin/versions-schema.json  |
 
-## JSON Schema
+### 1.1. `versions.json`: public API
 
-[`schema.json`](schema.json) contains a [JSON Schema](https://json-schema.org/) for the `versions.json` file.
+[This section forthcoming]
 
-It can be used to validate the versions file or to [generate code](https://json-schema.org/implementations.html) from the schema.
+### 1.2. `versions.json`: experimental API
 
 > [!WARNING]
-> The `variants` list is experimental and not stable. In the future, it may be changed in breaking ways, or even removed entirely.
+> The `variants` list and its contents are experimental and are not stable. In the future, they may be change in breaking ways (or removed entirely).
 
-From Julia 1.14, a version can also have a `variants` list next to `files`: the build variants released with it,
-`opt` (the PGO+LTO+BOLT optimized build) and `assert` (assertions enabled), with the keys of `files` plus `variants`
-as in `nightlies.json` below. They are served under julia-buildkite's canonical names, e.g.
-`bin/linuxopt/x86_64/1.14/julia-1.14.0-linuxopt-x86_64.tar.gz`. Tools that select from `files` never see them.
+From Julia 1.14, a version may also have a `variants` list next to `files`, which contains the build variants for that Julia version.
 
-## `nightlies.json`
+A `variants` entry has all the same keys as a `files` entry, and additionally contains a key named `variants`, which is a list containing the names of the variants applied to that build:
+- `opt` (the PGO+LTO+BOLT optimized build)
+- `assert` (Julia and LLVM assertions enabled)
+- `nogpl` (no GPL-licensed dependencies).
 
-S3 URL: https://julialang-s3.julialang.org/bin/nightlies.json
+## 2. Docs for `nightlies.json`
 
-**`nightlies.json` is experimental: its format may still change in breaking ways.**
+> [!WARNING]
+> All of `nightlies.json` is currently experimental. Its format may still change in breaking ways (or be removed entirely).
+
+| File             | Version | Canonical URL                                         | Schema                                                       |
+| ---------------- | ------- | ----------------------------------------------------- | ------------------------------------------------------------ |
+| `nightlies.json` | v1      | https://julialang-s3.julialang.org/bin/nightlies.json | https://julialang-s3.julialang.org/bin/nightlies-schema.json |
+
+### 2.1. `nightlies.json`: public API
+
+None. All of `nightlies.json` is currently experimental. It may still change in breaking ways (or be removed entirely).
+
+### 2.2. `nightlies.json`: experimental API
+
+> [!WARNING]
+> Everything in this section may be changed in breaking ways (or removed entirely).
 
 `nightlies.json` is the counterpart of `versions.json` for in-development builds. Its top-level keys are the
 nightly channels in juliaup's vocabulary: `nightly` (builds of `master`) and `x.y-nightly` (the latest build of the
@@ -44,12 +63,9 @@ differences:
   optimized build), `assert` (Julia and LLVM assertions enabled) and `nogpl` (no GPL-licensed dependencies).
   Every build currently has a single variant; the list leaves room for combinations.
 
-[`schema-nightlies.json`](schema-nightlies.json) contains its JSON Schema. See the
-[devdocs](./devdocs/README.md#nightliesjson) for how the file is generated.
+## 3. Downstream consumers
 
-## Downstream tools using `versions.json`
-
-This is a (not necessarily complete) list of known tools that make use of `versions.json`.
+This is a (not necessarily complete) list of known tools that make use of `versions.json` and `nightlies.json`
 If you maintain such a tool, please make a PR to add it to this list.
 This allows us to check if changes might break downstream tooling.
 
@@ -60,15 +76,11 @@ This allows us to check if changes might break downstream tooling.
 - [JuliaCI/julia-buildkite-plugin](https://github.com/JuliaCI/julia-buildkite-plugin): Buildkite plugin to install Julia for use in a pipeline. This plugin is used in Base Julia CI.
 - [JuliaCI/julia-snap](https://github.com/JuliaCI/julia-snap): Snap setup for Julia.
 - [JuliaCI/PkgEval.jl](https://github.com/JuliaCI/PkgEval.jl): A package to test one or more Julia versions against the Julia package ecosystem.
-- [JuliaLang/Juliaup](https://github.com/JuliaLang/juliaup): Julia installer and version manager[^2].
+- [JuliaLang/Juliaup](https://github.com/JuliaLang/juliaup): Julia installer and version manager[^1].
 - [JuliaLang/www.julialang.org](https://github.com/JuliaLang/www.julialang.org): The Julia website repo (uses `versions.json` to auto-generate the list of Julia releases).
 
-[^2]: This means that every tool that uses Juliaup is indirectly downstream of `versions.json`.
+[^1]: This means that every tool that uses Juliaup is indirectly downstream of `versions.json`.
 
-## Devdocs
+## 4. Devdocs
 
 See [`./devdocs/README.md`](./devdocs/README.md).
-
-## Background and motivation
-
-This issue provides background info that explains the motivation: https://github.com/JuliaLang/julia/issues/33817
