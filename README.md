@@ -15,21 +15,14 @@
 
 ### 1.1. `versions.json`: public API
 
-TODO: Write this section.
-
-Fields:
-- TODO
-
-Optional fields:
-- TODO
+[This section forthcoming]
 
 ### 1.2. `versions.json`: experimental API
 
 > [!WARNING]
-> The `variants` list is experimental and is not stable. In the future, it may be change in breaking ways (or removed entirely).
+> The `variants` list and its contents are experimental and are not stable. In the future, they may be change in breaking ways (or removed entirely).
 
 From Julia 1.14, a version may also have a `variants` list next to `files`, which contains the build variants for that Julia version.
-
 
 A `variants` entry has all the same keys as a `files` entry, and additionally contains a key named `variants`, which is a list containing the names of the variants applied to that build:
 - `opt` (the PGO+LTO+BOLT optimized build)
