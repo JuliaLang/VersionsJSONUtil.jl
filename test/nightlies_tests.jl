@@ -47,7 +47,7 @@ const dict = JSON.parsefile(filename)
                 @test required_keys ⊆ collect(keys(filedict))
                 @test collect(keys(filedict)) ⊆ union(required_keys, optional_keys)
 
-                @test filedict["arch"] in ["x86_64", "i686", "aarch64", "armv7l", "powerpc64le"]
+                @test filedict["arch"] in ["x86_64", "i686", "aarch64", "armv7l", "powerpc64le", "riscv64"]
                 @test filedict["extension"] in ["exe", "dmg", "tar.gz", "zip"]
                 @test filedict["kind"] in ["archive", "installer"]
                 @test filedict["os"] in ["mac", "winnt", "linux", "freebsd"]
@@ -58,6 +58,7 @@ const dict = JSON.parsefile(filename)
                     "aarch64-linux-gnu",
                     "armv7l-linux-gnueabihf",
                     "powerpc64le-linux-gnu",
+                    "riscv64-linux-gnu",
                     "aarch64-apple-darwin14",
                     "x86_64-apple-darwin14",
                     "x86_64-w64-mingw32",
