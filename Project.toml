@@ -14,6 +14,9 @@ Tar = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
 TimeZones = "f269a46b-ccf7-5d73-abea-4c690281aa53"
 WebCacheUtilities = "0c1c26de-fc5f-47ff-87a8-a157289a9bac"
 
+[sources]
+WebCacheUtilities = {rev = "master", url = "https://github.com/JuliaCI/WebCacheUtilities.jl.git"}
+
 [compat]
 julia = "1.6"
 
