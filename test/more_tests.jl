@@ -103,6 +103,7 @@ end
                             "aarch64",
                             "armv7l",
                             "powerpc64le",
+                            "riscv64",
                         ]
                         @test filedict["arch"] isa AbstractString
                         @test filedict["arch"] in allowed_arches
@@ -153,6 +154,7 @@ end
                             "aarch64-linux-gnu",
                             "armv7l-linux-gnueabihf",
                             "powerpc64le-linux-gnu",
+                            "riscv64-linux-gnu",
 
                             # macOS:
                             "aarch64-apple-darwin14",

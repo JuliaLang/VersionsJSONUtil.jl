@@ -143,7 +143,8 @@
                 "i686",
                 "powerpc64le",
                 "aarch64",
-                "armv7l"
+                "armv7l",
+                "riscv64"
             ],
             "title": "Arch"
         },
@@ -178,7 +179,8 @@
                 "armv7l-linux-gnueabihf",
                 "x86_64-unknown-freebsd11.1",
                 "x86_64-linux-musl",
-                "aarch64-apple-darwin14"
+                "aarch64-apple-darwin14",
+                "riscv64-linux-gnu"
             ],
             "title": "Triplet"
         },

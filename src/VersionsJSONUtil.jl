@@ -93,6 +93,7 @@ julia_platforms = [
     Linux(:aarch64; libc = :glibc),
     Linux(:armv7l; libc = :glibc),
     Linux(:powerpc64le; libc = :glibc),
+    Linux(:riscv64; libc = :glibc),
     # *-linux-musl
     Linux(:x86_64; libc = :musl),
     # *-apple-darwin

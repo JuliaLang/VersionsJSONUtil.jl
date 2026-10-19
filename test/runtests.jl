@@ -4,6 +4,9 @@ import VersionsJSONUtil: WindowsPortable, WindowsTarball, MacOSTarball, Variant
 using Test
 
 const download_urls = Dict(
+    v"1.14.0" => Dict(
+        Linux(:riscv64) =>              "https://julialang-s3.julialang.org/bin/linux/riscv64/1.14/julia-1.14.0-linux-riscv64.tar.gz",
+    ),
     v"1.7.0-beta3" => Dict(
         MacOS(:aarch64) =>              "https://julialang-s3.julialang.org/bin/mac/aarch64/1.7/julia-1.7.0-beta3-macaarch64.dmg",
     ),
@@ -138,6 +141,7 @@ const download_urls = Dict(
         @test nightly_url(Linux(:x86_64)) == base * "linux/x86_64/julia-latest-linux-x86_64.tar.gz"
         @test nightly_url(Linux(:i686)) == base * "linux/i686/julia-latest-linux-i686.tar.gz"
         @test nightly_url(Linux(:aarch64), v"1.13") == base * "linux/aarch64/1.13/julia-latest-linux-aarch64.tar.gz"
+        @test nightly_url(Linux(:riscv64)) == base * "linux/riscv64/julia-latest-linux-riscv64.tar.gz"
         @test nightly_url(Linux(:x86_64; libc = :musl)) == base * "musl/x86_64/julia-latest-musl-x86_64.tar.gz"
         @test nightly_url(MacOS(:x86_64)) == base * "macos/x86_64/julia-latest-macos-x86_64.dmg"
         @test nightly_url(MacOSTarball(:aarch64)) == base * "macos/aarch64/julia-latest-macos-aarch64.tar.gz"
@@ -167,7 +171,7 @@ const download_urls = Dict(
         @test platforms[1:length(VersionsJSONUtil.julia_platforms)] == VersionsJSONUtil.julia_platforms
         variants = filter(p -> p isa Variant, platforms)
         nbase = count(p -> p isa VersionsJSONUtil.BasePlatform, VersionsJSONUtil.julia_platforms)
-        @test nbase == 11
+        @test nbase == 12
         @test length(variants) == nbase * length(VersionsJSONUtil.nightly_variants)
         @test any(v -> v.name == "opt" && triplet(v) == "x86_64-linux-gnu", variants)
         @test any(v -> v.name == "assert" && triplet(v) == "aarch64-linux-gnu", variants)
