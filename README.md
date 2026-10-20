@@ -20,48 +20,73 @@
 ### 1.2. `versions.json`: experimental API
 
 > [!WARNING]
-> The `variants` list and its contents are experimental and are not stable. In the future, they may be change in breaking ways (or removed entirely).
+> The `variants` list and its contents are experimental. In the future, they may change in breaking ways (or be removed entirely).
 
-From Julia 1.14, a version may also have a `variants` list next to `files`, which contains the build variants for that Julia version.
+Starting with Julia 1.14, a version may optionally also have a `variants` list next to `files`. The `variants` list contains the list of variant files for that Julia version.
 
-A `variants` entry has all the same keys as a `files` entry, and additionally contains a key named `variants`, which is a list containing the names of the variants applied to that build:
+A `variants` entry has the same keys as a `files` entry. Additionally, each entry contains a key named `variants`, which is the list of one or more variant labels for that file.
+
+| Field             | Presence | Type    | Description                                         |
+| ----------------- | -------- | ------- | --------------------------------------------------- |
+| `variants`        | Optional | Array    | List of one or more variant labels for this file   |
+
+Possible variant labels are:
 - `opt` (the PGO+LTO+BOLT optimized build)
 - `assert` (Julia and LLVM assertions enabled)
-- `nogpl` (no GPL-licensed dependencies).
+- `nogpl` (no GPL-licensed dependencies)
+
+Additional variant labels may be added in the future.
 
 ## 2. Docs for `nightlies.json`
 
 > [!WARNING]
-> All of `nightlies.json` is currently experimental. Its format may still change in breaking ways (or be removed entirely).
+> All of `nightlies.json` is currently experimental. It may still change in breaking ways (or be removed entirely).
 
-| File             | Version | Canonical URL                                         | Schema                                                       |
-| ---------------- | ------- | ----------------------------------------------------- | ------------------------------------------------------------ |
-| `nightlies.json` | v1      | https://julialang-s3.julialang.org/bin/nightlies.json | https://julialang-s3.julialang.org/bin/nightlies-schema.json |
+| File             | Version                | URL                                                   | Schema                                                       |
+| ---------------- | ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------ |
+| `nightlies.json` | Experimental           | https://julialang-s3.julialang.org/bin/nightlies.json | https://julialang-s3.julialang.org/bin/nightlies-schema.json |
 
 ### 2.1. `nightlies.json`: public API
 
-None. All of `nightlies.json` is currently experimental. It may still change in breaking ways (or be removed entirely).
+[none yet]
 
 ### 2.2. `nightlies.json`: experimental API
 
 > [!WARNING]
 > Everything in this section may be changed in breaking ways (or removed entirely).
 
-`nightlies.json` is the counterpart of `versions.json` for in-development builds. Its top-level keys are the
-nightly channels in juliaup's vocabulary: `nightly` (builds of `master`) and `x.y-nightly` (the latest build of the
-x.y release series, i.e. of `release-x.y` once that branch exists). Each channel has a `files` list describing the
-standard builds with the same keys as `versions.json` (`triplet`, `os`, `arch`, `kind`, `extension`, `url`), with two
-differences:
+`nightlies.json` is the counterpart of `versions.json` for in-development builds.
+Its top-level keys are the nightly channels.
 
-- There is no `version`, `size`, `sha256` or tree hash: every URL is a `julia-latest-*` file that is overwritten
-  after each successful build on its branch, so nothing content-specific can be recorded. Consumers should
-  track changes through the server's `ETag` / `Last-Modified` headers (as juliaup does). The detached signature,
-  when one is published, is referenced by URL in `asc-url` rather than inlined.
-- Build variants of the standard binaries are listed in a separate `variants` list (absent when there are none),
-  so that tools selecting a file from `files` by platform never pick up a variant by accident. Its entries have the
-  keys of `files` plus `variants`, the names of the variants applied to that build: `opt` (the PGO+LTO+BOLT
-  optimized build), `assert` (Julia and LLVM assertions enabled) and `nogpl` (no GPL-licensed dependencies).
-  Every build currently has a single variant; the list leaves room for combinations.
+The possible nightly channels are:
+- `nightly`, which tracks the `master` branch of Julia.
+- `x.y-nightly`, which tracks the `release-x.y` branch of Julia.
+    - For example, the `1.10-nightly` channel tracks the `release-1.10` branch of Julia.
+
+Each nightly channel has a `files` list.
+From Julia 1.14, a version may optionally also have a `variants` list next to `files`.
+
+#### 2.3.1. `nightlies.json`: `files`
+
+In `files` entries in `nightlies.json`, the following keys have the same meaning as they do in `versions.json`: `arch`, `extension`, `kind`, `os`, `triplet`, and `url`.
+
+Additionally, `files` entries in `nightlies.json` may contain the following keys:
+
+| Field             | Presence | Type    | Description                                        |
+| ----------------- | -------- | ------- | -------------------------------------------------- |
+| `asc-url`         | Optional | String  | URL of the PGP signature, if available             |
+
+The following keys are not present: `asc`, `etag`, `git-tree-sha1`, `git-tree-sha256`, `last-modified`, `sha256`, `size`, and `version`.
+
+Some additional notes:
+- Each URL points to a file that may be overwritten by subsequent builds on the same branch. Therefore, nothing specific to the contents of the file is recorded in `nightlies.json`.
+- Consumers of `nightlies.json` should record and compare the server's `ETag` and `Last-Modified` headers when downloading files.
+
+#### 2.3.2. `nightlies.json`: `variants`
+
+Starting with Julia 1.14, a version may optionally also have a `variants` list next to `files`. `variants` in `nightlies.json` works similarly to `variants` in `versions.json`, except that a _nightlies_ `variants` entry has the same keys as a _nightlies_ `files` entry.
+
+See the `variants` documentation above for full details.
 
 ## 3. Downstream consumers
 
