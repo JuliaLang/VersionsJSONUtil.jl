@@ -63,7 +63,7 @@ jobs:
       - uses: julia-actions/julia-runtest@6e050c8013b833b1195105ff2fce9cd802f53271 # v1.12.0
 
   full-build-regular:
-    name: Full test
+    name: Full build regular
     # This job takes a long time (1+ hours).
     # So we intentionally skip this job on PR runs.
     # But we still run this job on Merge Queue jobs.
@@ -125,7 +125,7 @@ jobs:
           if-no-files-found: error
 
   full-build-nightlies:
-    name: Build nightlies.json
+    name: Full build nightlies
     # Only HEAD requests (no downloads), so cheap enough to also run on pull requests.
     runs-on: ubuntu-latest
     timeout-minutes: 30
