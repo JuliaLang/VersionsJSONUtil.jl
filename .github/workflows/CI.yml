@@ -170,15 +170,15 @@ jobs:
       - run: npx -p ajv-cli@3.3.0 ajv compile -s schema.json
 
   schema-check-nightlies:
-    # This CI job just makes sure that `nightlies-schema.json` is a valid JSON schema.
-    # This CI job does NOT validate `nightlies.json` against `nightlies-schema.json`.
+    # This CI job just makes sure that `schema-nightlies.json` is a valid JSON schema.
+    # This CI job does NOT validate `nightlies.json` against `schema-nightlies.json`.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
         with:
           persist-credentials: false
-      - run: npx -p ajv-cli@3.3.0 ajv compile -s nightlies-schema.json
+      - run: npx -p ajv-cli@3.3.0 ajv compile -s schema-nightlies.json
 
   upload-regular-to-s3:
     needs: [package-tests, full-build-regular, schema-check-regular]
