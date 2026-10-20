@@ -291,4 +291,4 @@ jobs:
       - name: Download the current nightlies.json from S3
         run: curl -LO https://julialang-s3.julialang.org/bin/nightlies.json
       - name: Run the post-build tests on the nightlies.json that we downloaded from S3
-        run: julia --project test/more_tests.jl nightlies.json
+        run: julia --project test/nightlies_tests.jl nightlies.json
