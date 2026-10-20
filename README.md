@@ -4,8 +4,9 @@
 
 1. [`versions.json`](#1-docs-for-versionsjson)
 2. [`nightlies.json`](#2-docs-for-nightliesjson)
-3. [Downstream consumers](#3-downstream-consumers)
-4. [Devdocs](#4-devdocs)
+3. [Important notes](#3-important-notes)
+4. [List of downstream consumers](#4-list-of-downstream-consumers)
+5. [Devdocs](#5-devdocs)
 
 ## 1. Docs for `versions.json`
 
@@ -28,12 +29,12 @@ A `variants` entry has the same keys as a `files` entry. Additionally, each entr
 
 | Field             | Presence | Type    | Description                                         |
 | ----------------- | -------- | ------- | --------------------------------------------------- |
-| `variants`        | Optional | Array    | List of one or more variant labels for this file   |
+| `variants`        | Required | Array    | List of one or more variant labels for this file   |
 
-Possible variant labels are:
+The `variants` array contains one or more variant labels. Possible variant labels are:
 - `opt` (the PGO+LTO+BOLT optimized build)
 - `assert` (Julia and LLVM assertions enabled)
-- `nogpl` (no GPL-licensed dependencies)
+- `nogpl` (no GPL-licensed stdlibs)
 
 Additional variant labels may be added in the future.
 
@@ -55,43 +56,57 @@ Additional variant labels may be added in the future.
 > [!WARNING]
 > Everything in this section may be changed in breaking ways (or removed entirely).
 
-`nightlies.json` is the counterpart of `versions.json` for in-development builds.
-Its top-level keys are the nightly channels.
+`nightlies.json` is the counterpart of `versions.json` for in-development builds. It is a JSON file. The top-level value is a JSON object. In this top-level object, the keys are strings corresponding to nightly tracks.
 
-The possible nightly channels are:
-- `nightly`, which tracks the `master` branch of Julia.
-- `x.y-nightly`, which tracks the `release-x.y` branch of Julia.
-    - For example, the `1.10-nightly` channel tracks the `release-1.10` branch of Julia.
+Possible nightly tracks currently include:
+- `nightly`, which follows the `master` branch of Julia.
+- `x.y-nightly`, which follows the `release-x.y` branch of Julia.
+    - For example, the `1.10-nightly` track follows the `release-1.10` branch of Julia.
 
-Each nightly channel has a `files` list.
-From Julia 1.14, a version may optionally also have a `variants` list next to `files`.
+Nightly tracks may be added or removed in the future.
+
+For each key (nightly track), the corresponding value is another JSON object, which we will refer to in this document as "nightly-track-level objects". In each nightly-track-level object, the possible keys are:
+- `files`: the list of files. See below for details.
+- `variants`: list of variant files. See below for details.
+
+Additional keys may be added to nightly-track-level objects in the future.
+
+Some important notes:
+- Specific `x.y-nightly` tracks are not guaranteed to exist, and if they exist currently, they may not exist in the future.
+    - For example, at the time of writing, the `1.13-nightly` track exists. However, after Julia 1.13 stops being maintained, the `1.13-nightly` track will cease to exist.
+- Each URL points to a file that may be overwritten by subsequent builds on the same branch. Therefore, nothing specific to the contents of the file is recorded in `nightlies.json`. For example, checksums are not available for nightlies.
+- Consumers of `nightlies.json` should record the server's `ETag` and `Last-Modified` headers when downloading files.
+    - The server's `ETag` header should be treated as an opaque string. Do not assume that it has any particular format.
+    - The server's `Last-Modified` header  should be treated as an opaque string. Do not assume that it is parseable as a date.
+- Consumers should refuse to download a nightly from a non-HTTPS URL.
 
 #### 2.3.1. `nightlies.json`: `files`
 
-In `files` entries in `nightlies.json`, the following keys have the same meaning as they do in `versions.json`: `arch`, `extension`, `kind`, `os`, `triplet`, and `url`.
+`files` is the list of files. Each entry in `files` is a JSON object, in which the following keys have the same meaning as they do in `versions.json`: `arch`, `extension`, `kind`, `os`, `triplet`, and `url`.
 
 Additionally, `files` entries in `nightlies.json` may contain the following keys:
 
 | Field             | Presence | Type    | Description                                        |
 | ----------------- | -------- | ------- | -------------------------------------------------- |
-| `asc-url`         | Optional | String  | URL of the PGP signature, if available             |
+| `asc-url`         | Optional | String  | URL of the PGP signature file, if available        |
 
 The following keys are not present: `asc`, `etag`, `git-tree-sha1`, `git-tree-sha256`, `last-modified`, `sha256`, `size`, and `version`.
 
-Some additional notes:
-- Each URL points to a file that may be overwritten by subsequent builds on the same branch. Therefore, nothing specific to the contents of the file is recorded in `nightlies.json`.
-- Consumers of `nightlies.json` should record and compare the server's `ETag` and `Last-Modified` headers when downloading files.
-
 #### 2.3.2. `nightlies.json`: `variants`
 
-Starting with Julia 1.14, a version may optionally also have a `variants` list next to `files`. `variants` in `nightlies.json` works similarly to `variants` in `versions.json`, except that a _nightlies_ `variants` entry has the same keys as a _nightlies_ `files` entry.
+Starting with Julia 1.14, a nightly track may optionally also have a `variants` list next to `files`. `variants` in `nightlies.json` works similarly to `variants` in `versions.json`, except that a _nightlies_ `variants` entry has keys similar to a _nightlies_ `files` entry.
 
 See the `variants` documentation above for full details.
 
-## 3. Downstream consumers
+## 3. Important notes
 
-This is a (not necessarily complete) list of known tools that make use of `versions.json`
-and/or `nightlies.json`.
+- The specific structure and contents of filenames and URLs is not public API and is subject to change. Consumers should not manually construct filenames or URLs. Instead, use the `url` field.
+- The order of entries in arrays is subject to change.
+- For `versions.json`, consumers should always verify the `sha256` checksum of every downloaded file.
+
+## 4. List of downstream consumers
+
+This is a (not necessarily complete) list of known tools that make use of `versions.json` and/or `nightlies.json`.
 If you maintain such a tool, please make a PR to add it to this list.
 This allows us to check if changes might break downstream tooling.
 
@@ -120,6 +135,6 @@ Other:
 - [JuliaLang/www.julialang.org](https://github.com/JuliaLang/www.julialang.org) ([usage](https://github.com/JuliaLang/www.julialang.org/blob/cbfac612a7bd0c8d90dad2a0f882bc152074dc7e/downloads/oldreleases.jl#L16)): The Julia website repo (uses `versions.json` to auto-generate the list of Julia releases).
 - [StefanKarpinski/Resolver.jl](https://github.com/StefanKarpinski/Resolver.jl) ([usage](https://github.com/StefanKarpinski/Resolver.jl/blob/9353ca543fb83012cc8fb9fb427febbc01b34ccf/bin/Registries.jl#L16)): Next generation of Pkg resolver.
 
-## 4. Devdocs
+## 5. Devdocs
 
 See [`./devdocs/README.md`](./devdocs/README.md).
