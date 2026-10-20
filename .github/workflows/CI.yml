@@ -23,7 +23,7 @@ on:
     - cron: "0 6 * * *"
 
 concurrency:
-  # Skip intermediate builds: all builds except for builds on the `master` branch
+  # Skip intermediate builds: all builds except for builds on the `main` branch
   # Cancel intermediate builds: only pull request builds
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.ref != 'refs/heads/main' || github.run_number }}
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
@@ -50,19 +50,17 @@ jobs:
           - ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
-
+        with:
+          persist-credentials: false
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: ${{ matrix.version }}
-
       - uses: julia-actions/cache@a7bed9df697e5d7309d68afe7542a87621a8b6c8 # v3.3.0
-
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
-
       - uses: julia-actions/julia-runtest@6e050c8013b833b1195105ff2fce9cd802f53271 # v1.12.0
 
-  full-test:
+  full-build-regular:
     name: Full test
     # This job takes a long time (1+ hours).
     # So we intentionally skip this job on PR runs.
@@ -73,21 +71,17 @@ jobs:
     timeout-minutes: 360
     strategy:
       fail-fast: false
-
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
-
+        with:
+          persist-credentials: false
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: '1.13' # the current release; 1.10 and 1.11 do not know riscv64
-
       - uses: julia-actions/cache@a7bed9df697e5d7309d68afe7542a87621a8b6c8 # v3.3.0
-
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
-
-      - run: rm -f versions.json
-
+      - run: rm -fv versions.json
       - name: Download the deployed versions.json to build on top of
         # a missing/broken seed must not fail the build; we just rebuild from scratch
         if: inputs.full-rebuild != true
@@ -96,21 +90,17 @@ jobs:
             cp versions.json seed.versions.json
           else
             echo "::warning::deployed versions.json unavailable; doing a full rebuild"
-            rm -f versions.json
+            rm -fv versions.json
           fi
-
       - name: Build versions.json
         run: |
-          using VersionsJSONUtil
-
+          using VersionsJSONUtil: VersionsJSONUtil
           only_version = "${{ inputs.only-version }}"
-
           VersionsJSONUtil.main(
               "versions.json";
               only_version = isempty(only_version) ? nothing : only_version,
           )
         shell: julia --project {0}
-
       - name: Diff against the deployed versions.json
         # sort keys with jq first
         run: |
@@ -119,12 +109,9 @@ jobs:
           else
             echo "no seed was downloaded; skipping the diff"
           fi
-
-      - name: Validate versions.json against schema
+      - name: Validate the built versions.json against schema
         run: npx -p ajv-cli@3.3.0 ajv -s schema.json -d versions.json
-
       - run: julia --project test/more_tests.jl versions.json
-
       - name: Upload versions.json as workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -132,31 +119,27 @@ jobs:
           path: versions.json
           if-no-files-found: error
 
-  nightlies:
+  full-build-nightlies:
     name: Build nightlies.json
     # Only HEAD requests (no downloads), so cheap enough to also run on pull requests.
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
-
+        with:
+          persist-credentials: false
       - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
         with:
           version: '1.13' # the current release; 1.10 and 1.11 do not know riscv64
-
       - uses: julia-actions/cache@a7bed9df697e5d7309d68afe7542a87621a8b6c8 # v3.3.0
-
       - name: Install dependencies
         run: julia --color=yes --project -e "using Pkg; Pkg.instantiate()"
-
-      - run: rm -f nightlies.json
-
+      - run: rm -fv nightlies.json
       - name: Build nightlies.json
         run: |
-          using VersionsJSONUtil
+          using VersionsJSONUtil: VersionsJSONUtil
           VersionsJSONUtil.nightlies("nightlies.json")
         shell: julia --project {0}
-
       - name: Diff against the deployed nightlies.json
         # the output is deterministic, so a plain diff shows what a deploy would change
         run: |
@@ -165,12 +148,9 @@ jobs:
           else
             echo "::warning::deployed nightlies.json unavailable; skipping the diff"
           fi
-
-      - name: Validate nightlies.json against schema
+      - name: Validate the built nightlies.json against schema
         run: npx -p ajv-cli@3.3.0 ajv -s schema-nightlies.json -d nightlies.json
-
       - run: julia --project test/nightlies_tests.jl nightlies.json
-
       - name: Upload nightlies.json as workflow artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -178,29 +158,47 @@ jobs:
           path: nightlies.json
           if-no-files-found: error
 
-  upload-to-s3:
-    needs: [package-tests, full-test]
+  schema-check-regular:
+    # This CI job just makes sure that `schema.json` is a valid JSON schema.
+    # This CI job does NOT validate `versions.json` against `schema.json`.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          persist-credentials: false
+      - run: npx -p ajv-cli@3.3.0 ajv compile -s schema.json
+
+  schema-check-nightlies:
+    # This CI job just makes sure that `nightlies-schema.json` is a valid JSON schema.
+    # This CI job does NOT validate `nightlies.json` against `nightlies-schema.json`.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # 6.0.2
+        with:
+          persist-credentials: false
+      - run: npx -p ajv-cli@3.3.0 ajv compile -s nightlies-schema.json
+
+  upload-regular-to-s3:
+    needs: [package-tests, full-build-regular, schema-check-regular]
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
-
     steps:
-      - name: Download versions.json from previous job
+      - name: Download the built versions.json from previous job
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: versions
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # 6.3.0
         with:
           aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.aws_region }}
-
-      - name: Upload versions.json to S3
+      - name: Upload the built versions.json to S3
         run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
-
-      - name: Purge cache
+      - name: Purge the Fastly cache
         run: |
           curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/versions.json \
             || echo "::warning::Fastly purge of versions.json failed; it will be served stale until the cached copy expires"
@@ -209,33 +207,29 @@ jobs:
     # Deployed separately from versions.json: a hiccup probing the nightlies bucket must
     # not hold up a release's versions.json update, and vice versa. Also runs on the
     # daily schedule, since the set of channels changes with release branches, not releases.
-    needs: [package-tests, nightlies]
+    needs: [package-tests, full-build-nightlies, schema-check-nightlies]
     if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
-      - name: Download nightlies.json from previous job
+      - name: Download the built nightlies.json from previous job
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: nightlies
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # 6.3.0
         with:
           aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.aws_region }}
-
-      - name: Upload nightlies.json to S3
+      - name: Upload the built nightlies.json to S3
         run: aws s3 cp nightlies.json s3://${{ env.s3_bucket }}/bin/nightlies.json --acl public-read --no-progress
-
-      - name: Purge cache
+      - name: Purge the Fastly cache
         run: |
           curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/nightlies.json \
             || echo "::warning::Fastly purge of nightlies.json failed; it will be served stale until the cached copy expires"
 
-  test-current-s3:
+  test-current-s3-regular:
     # We intentionally do not make this job a "required status check" on PRs.
     # Because if the currently deployed `versions.json` on S3 is already broken,
     # then this job will fail, which would block us from merging a PR with fixes.
@@ -259,3 +253,28 @@ jobs:
         run: curl -LO https://julialang-s3.julialang.org/bin/versions.json
       - name: Run the post-build tests on the versions.json that we downloaded from S3
         run: julia --project test/more_tests.jl versions.json
+
+  test-current-s3-nightly:
+    # We intentionally do not make this job a "required status check" on PRs.
+    # Because if the currently deployed `versions.json` on S3 is already broken,
+    # then this job will fail, which would block us from merging a PR with fixes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
+        with:
+          persist-credentials: false
+      - uses: julia-actions/setup-julia@fa02766e078afaaf09b14210362cee14137e6a32 # v3.0.2
+        with:
+          version: '1.13'
+      - uses: julia-actions/cache@a7bed9df697e5d7309d68afe7542a87621a8b6c8 # v3.3.0
+      - name: Install dependencies
+        run: julia --color=yes --project -e "using Pkg; Pkg.instantiate(); Pkg.precompile()"
+      - name: Remove an old nightlies.json if one happens to be lying around
+        run: rm -fv nightlies.json
+      - name: Download the current nightlies.json from S3
+        run: curl -LO https://julialang-s3.julialang.org/bin/nightlies.json
+      - name: Run the post-build tests on the nightlies.json that we downloaded from S3
+        run: julia --project test/more_tests.jl nightlies.json
