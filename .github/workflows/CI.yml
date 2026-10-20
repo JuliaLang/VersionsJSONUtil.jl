@@ -30,7 +30,6 @@ concurrency:
 
 permissions:
   contents: read
-  actions: write # Needed for `julia-actions/cache` to clear old caches
 
 env:
   aws_region: us-east-1
@@ -48,6 +47,9 @@ jobs:
           - '1.13' # the current release; 1.10 and 1.11 do not know riscv64
         os:
           - ubuntu-latest
+    permissions:
+      contents: read
+      actions: write # Needed for `julia-actions/cache` to clear old caches
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
@@ -71,6 +73,9 @@ jobs:
     timeout-minutes: 360
     strategy:
       fail-fast: false
+    permissions:
+      contents: read
+      actions: write # Needed for `julia-actions/cache` to clear old caches
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
@@ -124,6 +129,9 @@ jobs:
     # Only HEAD requests (no downloads), so cheap enough to also run on pull requests.
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: write # Needed for `julia-actions/cache` to clear old caches
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
@@ -237,6 +245,9 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+    permissions:
+      contents: read
+      actions: write # Needed for `julia-actions/cache` to clear old caches
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
@@ -254,7 +265,7 @@ jobs:
       - name: Run the post-build tests on the versions.json that we downloaded from S3
         run: julia --project test/more_tests.jl versions.json
 
-  test-current-s3-nightly:
+  test-current-s3-nightlies:
     # We intentionally do not make this job a "required status check" on PRs.
     # Because if the currently deployed `versions.json` on S3 is already broken,
     # then this job will fail, which would block us from merging a PR with fixes.
@@ -262,6 +273,9 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
+    permissions:
+      contents: read
+      actions: write # Needed for `julia-actions/cache` to clear old caches
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
