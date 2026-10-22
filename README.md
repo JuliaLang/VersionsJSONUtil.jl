@@ -1,4 +1,8 @@
-# VersionsJSONUtil: Generate `versions.json` files that contain the list of Julia versions
+# VersionsJSONUtil.jl: Generate the `versions.json` file
+
+`versions.json` is a file that contains the list of Julia versions.
+
+VersionsJSONUtil.jl is the Julia package that generates the `versions.json` file.
 
 ## Table of contents
 
@@ -79,6 +83,7 @@ Some important notes:
     - The server's `ETag` header should be treated as an opaque string. Do not assume that it has any particular format.
     - The server's `Last-Modified` header  should be treated as an opaque string. Do not assume that it is parseable as a date.
 - Consumers should refuse to download a nightly from a non-HTTPS URL.
+- We recommend that consumers do not download nightlies from mirrors (because there is no way to verify the integrity of the download).
 
 #### 2.3.1. `nightlies.json`: `files`
 
@@ -101,12 +106,16 @@ See the `variants` documentation above for full details.
 ## 3. Important notes
 
 - The specific structure and contents of filenames and URLs is not public API and is subject to change. Consumers should not manually construct filenames or URLs. Instead, use the `url` field.
-- The order of entries in arrays is subject to change.
+- The following are subject to change:
+    - Order of entries in arrays
+    - Order of keys in objects
+    - JSON whitespace, including line breaks
 - For `versions.json`, consumers should always verify the `sha256` checksum of every downloaded file.
+- Consumers should always download `versions.json` and `nightlies.json` over HTTPS.
 
 ## 4. List of downstream consumers
 
-This is a (not necessarily complete) list of known tools that make use of `versions.json` and/or `nightlies.json`.
+This is a (not necessarily complete) list of known tools that make use of `versions.json` or `nightlies.json`.
 If you maintain such a tool, please make a PR to add it to this list.
 This allows us to check if changes might break downstream tooling.
 
