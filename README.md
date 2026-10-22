@@ -1,4 +1,8 @@
-# VersionsJSONUtil: Generate `versions.json` files that contain the list of Julia versions
+# VersionsJSONUtil.jl: Generate the `versions.json` file
+
+`versions.json` is a file that contains the list of Julia versions.
+
+VersionsJSONUtil.jl is the Julia package that generates the `versions.json` file.
 
 ## Table of contents
 
