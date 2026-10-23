@@ -205,7 +205,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.aws_region }}
       - name: Upload the built versions.json to S3
-        run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --no-progress
+        run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --cache-control "public,max-age=600" --no-progress
       - name: Purge the Fastly cache
         run: |
           curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/versions.json \
@@ -231,7 +231,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.aws_region }}
       - name: Upload the built nightlies.json to S3
-        run: aws s3 cp nightlies.json s3://${{ env.s3_bucket }}/bin/nightlies.json --acl public-read --no-progress
+        run: aws s3 cp nightlies.json s3://${{ env.s3_bucket }}/bin/nightlies.json --acl public-read --cache-control "public,max-age=600" --no-progress
       - name: Purge the Fastly cache
         run: |
           curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/nightlies.json \

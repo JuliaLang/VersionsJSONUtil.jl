@@ -38,13 +38,17 @@ jobs:
           aws-region: ${{ env.aws_region }}
 
       - name: Upload schema.json as versions-schema.json to s3
-        run: aws s3 cp schema.json s3://${{ env.s3_bucket }}/bin/versions-schema.json --acl public-read --no-progress
+        run: aws s3 cp schema.json s3://${{ env.s3_bucket }}/bin/versions-schema.json --acl public-read --cache-control "public,max-age=600" --no-progress
 
       - name: Purge cache
-        run: curl -X PURGE https://julialang-s3.julialang.org/bin/versions-schema.json
+        run: |
+          curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/versions-schema.json \
+            || echo "::warning::Fastly purge of versions-schema.json failed"
 
       - name: Upload schema-nightlies.json as nightlies-schema.json to s3
-        run: aws s3 cp schema-nightlies.json s3://${{ env.s3_bucket }}/bin/nightlies-schema.json --acl public-read --no-progress
+        run: aws s3 cp schema-nightlies.json s3://${{ env.s3_bucket }}/bin/nightlies-schema.json --acl public-read --cache-control "public,max-age=600" --no-progress
 
       - name: Purge cache (nightlies-schema.json)
-        run: curl -X PURGE https://julialang-s3.julialang.org/bin/nightlies-schema.json
+        run: |
+          curl -fsS -X PURGE -H "Fastly-Key:${{ secrets.FASTLY_PURGE_TOKEN }}" https://julialang-s3.julialang.org/bin/nightlies-schema.json \
+            || echo "::warning::Fastly purge of nightlies-schema.json failed"
