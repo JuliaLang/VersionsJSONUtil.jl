@@ -326,8 +326,8 @@ end
 # and are few enough per run that rate limits are not a concern there.
 function head_url(url)
     response = try
-        # HTTP.jl's default read timeout is infinite; one hung connection would stall the build
-        HTTP.head(url; status_exception = false, connect_timeout = 15, readtimeout = 30, retries = 2)
+        # HTTP.jl's default idle timeout is infinite; one hung connection would stall the build
+        HTTP.head(url; status_exception = false, connect_timeout = 15, read_idle_timeout = 30, retries = 2)
     catch ex
         isa(ex, InterruptException) && rethrow(ex)
         # a failed request (DNS, reset, ...) must not kill the run; status 0 = transient
