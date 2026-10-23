@@ -116,6 +116,7 @@ See the `variants` documentation above for full details.
 ## 4. List of downstream consumers
 
 This is a (not necessarily complete) list of known tools that make use of `versions.json` or `nightlies.json`.
+
 If you maintain such a tool, please make a PR to add it to this list.
 This allows us to check if changes might break downstream tooling.
 
