@@ -105,6 +105,7 @@ See the `variants` documentation above for full details.
 
 ## 3. Important notes
 
+- Anything not explicitly documented as public is not public and is subject to change.
 - The specific structure and contents of filenames and URLs is not public API and is subject to change. Consumers should not manually construct filenames or URLs. Instead, use the `url` field.
 - The following are subject to change:
     - Order of entries in arrays
