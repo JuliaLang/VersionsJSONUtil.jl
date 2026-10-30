@@ -34,6 +34,8 @@ permissions:
 env:
   aws_region: us-east-1
   s3_bucket: julialang2
+  aws_readonly_role_arn: arn:aws:iam::873569884612:role/VersionsJSONUtil-readonly
+  aws_deploy_role_arn: arn:aws:iam::873569884612:role/VersionsJSONUtil-deploy
 
 jobs:
   package-tests:
@@ -68,7 +70,9 @@ jobs:
     # So we intentionally skip this job on PR runs.
     # But we still run this job on Merge Queue jobs.
     # (Scheduled runs are only there to refresh nightlies.json.)
-    if: github.event_name != 'pull_request' && github.event_name != 'schedule'
+    # workflow_dispatch runs are restricted to main, matching the AWS role trust policy
+    # (see devdocs/README.md).
+    if: github.event_name != 'pull_request' && github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
@@ -76,6 +80,7 @@ jobs:
     permissions:
       contents: read
       actions: write # Needed for `julia-actions/cache` to clear old caches
+      id-token: write # Needed to authenticate to AWS via GitHub's OIDC provider
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # 7.0.1
         with:
@@ -97,7 +102,20 @@ jobs:
             echo "::warning::deployed versions.json unavailable; doing a full rebuild"
             rm -fv versions.json
           fi
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # 6.3.0
+        with:
+          # this job only reads the bucket; the write-capable role is reserved for the
+          # upload jobs and deploy-schema
+          role-to-assume: ${{ env.aws_readonly_role_arn }}
+          aws-region: ${{ env.aws_region }}
+          # a full rebuild runs for hours; the credentials must outlive it
+          # (matches the job timeout and the role's max_session_duration in terraform/main.tf)
+          role-duration-seconds: 21600
       - name: Build versions.json
+        # The build talks to the S3 bucket directly (not the CDN), via AWS.jl, using
+        # the credentials configured above to avoid anonymous-request rate limits. Without
+        # credentials (e.g. local runs) the code degrades to unsigned requests.
         run: |
           using VersionsJSONUtil: VersionsJSONUtil
           only_version = "${{ inputs.only-version }}"
@@ -193,6 +211,9 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      actions: read # Needed by `actions/download-artifact`
+      id-token: write # Needed to authenticate to AWS via GitHub's OIDC provider
     steps:
       - name: Download the built versions.json from previous job
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -201,8 +222,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # 6.3.0
         with:
-          aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.aws_deploy_role_arn }}
           aws-region: ${{ env.aws_region }}
       - name: Upload the built versions.json to S3
         run: aws s3 cp versions.json s3://${{ env.s3_bucket }}/bin/versions.json --acl public-read --cache-control "public,max-age=600" --no-progress
@@ -219,6 +239,9 @@ jobs:
     if: (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      actions: read # Needed by `actions/download-artifact`
+      id-token: write # Needed to authenticate to AWS via GitHub's OIDC provider
     steps:
       - name: Download the built nightlies.json from previous job
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -227,8 +250,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # 6.3.0
         with:
-          aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ env.aws_deploy_role_arn }}
           aws-region: ${{ env.aws_region }}
       - name: Upload the built nightlies.json to S3
         run: aws s3 cp nightlies.json s3://${{ env.s3_bucket }}/bin/nightlies.json --acl public-read --cache-control "public,max-age=600" --no-progress

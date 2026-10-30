@@ -36,11 +36,36 @@ const download_urls = Dict(
         end
     end
 
+    @testset "s3_key / s3_prefix" begin
+        url = "https://julialang-s3.julialang.org/bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz"
+        @test VersionsJSONUtil.s3_key(url) == "bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz"
+        @test VersionsJSONUtil.s3_prefix(url) == "bin/linux/x64/1.6/"
+    end
+
+    @testset "object_info" begin
+        url = "https://julialang-s3.julialang.org/bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz"
+        key = "bin/linux/x64/1.6/julia-1.6.2-linux-x86_64.tar.gz"
+        entry = (; content_length = 1234, etag = "\"abc\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT")
+        cache = Dict{String, Any}("bin/linux/x64/1.6/" => Dict(key => entry))
+        hit = VersionsJSONUtil.object_info(cache, url)
+        @test hit.status == 200
+        @test hit.content_length == 1234
+        @test hit.etag == "\"abc\""
+        @test hit.last_modified == "Mon, 01 Jan 2024 00:00:00 GMT"
+        # key absent from a successfully listed prefix -> authoritative 404
+        miss = VersionsJSONUtil.object_info(cache, replace(url, "1.6.2" => "1.6.99"))
+        @test miss.status == 404
+        # a failed listing is memoized as `nothing` -> transient
+        failed = Dict{String, Any}("bin/linux/x64/1.6/" => nothing)
+        @test VersionsJSONUtil.object_info(failed, url).status == 0
+    end
+
     @testset "action_for_head_status" begin
         action = VersionsJSONUtil.action_for_head_status
         @test action(200, false) == :proceed
         @test action(200, true) == :proceed
-        # never drop an already-published URL on a non-200 (the CDN serves stale 404s)
+        # never drop an already-published URL on a non-200 (safety net against transient
+        # failures and operator mistakes in the bucket)
         @test action(404, true) == :keep_existing
         @test action(500, true) == :keep_existing
         # a 404 for an unknown URL: that version/platform doesn't exist
@@ -70,14 +95,14 @@ const download_urls = Dict(
         @test !matches(etag_entry, head(content_length = 1234, etag = "\"xyz\""))
         # absent ETag header can't be checked
         @test matches(etag_entry, head(content_length = 1234))
-        # entry without last-modified: reused once size and etag match
-        @test matches(etag_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
+        # last-modified is recorded but never compared, so neither a differing value nor
+        # a different format (HTTP-date vs the ISO 8601 the listing reports) is a mismatch
         full_entry = Dict("size" => 1234, "etag" => "\"abc\"", "last-modified" => "Mon, 01 Jan 2024 00:00:00 GMT")
-        @test matches(full_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
-        @test !matches(full_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Tue, 02 Jan 2024 00:00:00 GMT"))
-        @test !matches(full_entry, head(content_length = 1234, etag = "\"xyz\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
-        # absent Last-Modified header can't be checked
+        @test matches(full_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "Tue, 02 Jan 2024 00:00:00 GMT"))
+        @test matches(full_entry, head(content_length = 1234, etag = "\"abc\"", last_modified = "2024-01-01T00:00:00.000Z"))
         @test matches(full_entry, head(content_length = 1234, etag = "\"abc\""))
+        # etag still decides
+        @test !matches(full_entry, head(content_length = 1234, etag = "\"xyz\"", last_modified = "Mon, 01 Jan 2024 00:00:00 GMT"))
     end
 
     @testset "filedict_is_complete" begin
