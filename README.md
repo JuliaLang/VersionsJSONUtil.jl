@@ -20,7 +20,44 @@ VersionsJSONUtil.jl is the Julia package that generates the `versions.json` file
 
 ### 1.1. `versions.json`: public API
 
-[This section forthcoming]
+`versions.json` is a JSON file. The top-level value is a JSON object. In this top-level object, the keys are strings corresponding to Julia version numbers.
+
+For each key (Julia version number), the corresponding value is another JSON object, which we will refer to in this document as "version-level objects". In each version-level object, the possible keys are:
+- `files`: the list of files. See below for details.
+- `stable`: `true` if this Julia version is stable (non-prerelease). `false` for prereleases.
+- `variants` (experimental): list of variant files. See the "experimental API" section for details.
+
+Additional keys may be added to version-level objects in the future.
+
+`files` is the list of files. Each entry in `files` is a JSON object with the following fields.
+
+| Field             | Presence | Type    | Description                                        | Possible values (if Enum)                           |
+| ----------------- | -------- | ------- | -------------------------------------------------- | --------------------------------------------------- |
+| `arch`            | Required | Enum    | CPU architecture                                   | `x86_64`, `i686`, `powerpc64le`, `aarch64`, `armv7` |
+| `extension`       | Required | Enum    | File extension                                     | `dmg`, `exe`, `tar.gz`, `zip`                       |
+| `kind`            | Required | Enum    | File kind                                          | `archive`, `installer`                              |
+| `os`              | Required | Enum    | Operating system                                   | `mac`, `winnt`, `linux`, `freebsd`                  |
+| `sha256`          | Required | String  | SHA256 checksum of the file                        |                                                     |
+| `size`            | Required | Integer | File size in bytes                                 |                                                     |
+| `triplet`         | Required | Enum    | Platform triplet                                   | [see below]                                         |
+| `url`             | Required | String  | Download URL for the file                          |                                                     |
+| `version`         | Required | String  | Julia version number                               |                                                     |
+| `asc`             | Optional | String  | PGP signature (ASCII-armored)                      |                                                     |
+| `etag`            | Optional | String  | ETag header                                        |                                                     |
+| `git-tree-sha1`   | Optional | String  | Git SHA1 treehash of the extracted tree contents   |                                                     |
+| `git-tree-sha256` | Optional | String  | Git SHA256 treehash of the extracted tree contents |                                                     |
+| `last-modified`   | Optional | String  | Last-Modified header                               |                                                     |
+
+Some notes:
+- Optional keys are not guaranteed to be present.
+- Additional keys may be added to `files` entries in the future.
+- For Enums, additional possible values may be added in the future.
+- `etag` should be treated as an opaque string. Do not assume that it has any particular format.
+- `last-modified` should be treated as an opaque string. Do not assume that it is parseable as a date.
+
+The possible triplets include: `aarch64-apple-darwin14` `aarch64-linux-gnu`, `armv7l-linux-gnueabihf`, `i686-linux-gnu`, `i686-w64-mingw32`, `powerpc64le-linux-gnu`, `x86_64-apple-darwin14`, `x86_64-linux-gnu`, `x86_64-linux-musl`, `x86_64-unknown-freebsd11.1`, `x86_64-w64-mingw32`
+
+Additional triplets may be added in the future.
 
 ### 1.2. `versions.json`: experimental API
 
