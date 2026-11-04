@@ -106,3 +106,63 @@ function tar_os(p::MacOS)
     end
 end
 ```
+
+## AWS authentication (GitHub OIDC)
+
+The CI jobs that talk to AWS authenticate by assuming per-job IAM roles through GitHub's
+OIDC provider, so no long-lived access keys are stored in this repo. Two roles with
+different scopes are used; their ARNs are not secret (they are only assumable from this
+repo's workflows) and are inlined in the workflow files:
+
+- a **read-only role** (`arn:aws:iam::873569884612:role/VersionsJSONUtil-readonly`) for
+  the `full-build-regular` job, which lists the `julialang2` bucket while building
+  `versions.json`;
+- a **deploy role** (`arn:aws:iam::873569884612:role/VersionsJSONUtil-deploy`) for the
+  `upload-*-to-s3` and `deploy-schema` jobs, which write the four deployed files
+  (`versions.json`, `versions-schema.json`, `nightlies.json`, `nightlies-schema.json`).
+
+The GitHub OIDC identity provider (`token.actions.githubusercontent.com`) already exists
+in the AWS account; the roles only reference it.
+
+A note on pull requests: the read-only role is also assumable from `pull_request` runs of
+this repo (their tokens carry the `sub` `repo:JuliaLang/VersionsJSONUtil.jl:pull_request`),
+but only for PRs from branches of this repo — GitHub refuses `id-token: write` to
+fork-triggered `pull_request` runs entirely, so fork PRs can never assume any role and
+fall back to unsigned requests (which the public bucket accepts). The deploy role is not
+assumable from PRs at all: its trust matches only `refs/heads/main`, and tokens minted for
+`pull_request` runs carry a `sub` ending in `:pull_request` instead of a branch ref, so
+even a future workflow mistake (like granting `id-token: write` to a PR job) could not
+deploy from a PR.
+
+### Managing the roles
+
+The roles and their policies are defined with Terraform in [`terraform/`](../terraform/)
+([`main.tf`](../terraform/main.tf)); the OIDC provider is shared with other repositories
+and only looked up there, not managed. The state is kept in the `julialang-terraform` S3
+bucket (`VersionsJSONUtil.jl.tfstate`). To review and apply changes, with
+credentials for the AWS account active:
+
+```bash
+cd terraform
+terraform init
+terraform plan   # show what would change
+terraform apply  # apply it (asks for confirmation)
+```
+
+Some notes on the definitions:
+
+- The read-only role trusts `refs/heads/main` (push, and `workflow_dispatch`, which
+  `full-build-regular` restricts to `main` with a matching `if:` guard), merge-queue refs
+  (`refs/heads/gh-readonly-queue/...`), and `pull_request` runs as described above. It
+  can list and read the `bin/` prefix: the build lists it to decide what is missing and
+  downloads the binaries through authenticated requests (`s3:GetObject`), so neither part
+  is subject to anonymous rate limits. Its maximum session duration of 6 h matches the
+  `full-build-regular` job timeout: the job requests a 6 h session
+  (`role-duration-seconds` in `CI.yml`) because a full rebuild runs for hours and the
+  credentials must outlive it (the IAM default of 1 h would expire mid-build).
+- The deploy role trusts exactly `refs/heads/main`, since deploys only ever run from
+  there. It can write exactly the four deployed files (`s3:PutObjectAcl` is required
+  because the uploads use `--acl public-read`).
+
+Locally, `VersionsJSONUtil.main` sends unsigned requests when no AWS credentials are in
+the environment, which the public bucket accepts.

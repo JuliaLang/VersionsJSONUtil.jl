@@ -1,6 +1,8 @@
 module VersionsJSONUtil
 
-using HTTP, JSON, Pkg.BinaryPlatforms, WebCacheUtilities, SHA, Lazy
+using AWS, HTTP, JSON, Pkg.BinaryPlatforms, SHA, Lazy
+
+AWS.@service S3
 using Tar: Tar
 import Pkg.BinaryPlatforms: triplet, arch
 import Pkg.PlatformEngines: exe7z
@@ -152,18 +154,68 @@ end
 # Get list of tags from the Julia repo
 function get_tags()
     @info("Probing for tag list...")
-    tags_json_path = WebCacheUtilities.download_to_cache(
-        "julia_tags.json",
-        "https://api.github.com/repos/JuliaLang/julia/git/refs/tags",
+    response = HTTP.get("https://api.github.com/repos/JuliaLang/julia/git/refs/tags")
+    return JSON.parse(String(response.body))
+end
+
+# ------------------------------------------------------------------------------------------
+# Release binaries are listed and downloaded directly from the julialang2 S3 bucket, not
+# through the Fastly CDN (julialang-s3.julialang.org) in front of it, which rate-limits
+# and can serve stale 404s. Requests are signed when AWS credentials are available (in CI
+# via an OIDC role, see devdocs/README.md) and sent unsigned otherwise. The URLs recorded
+# in versions.json stay on the CDN host.
+
+const cdn_url_prefix = "https://julialang-s3.julialang.org/"
+const s3_bucket = "julialang2"
+const s3_region = "us-east-1"
+
+s3_key(url::AbstractString) = replace(url, cdn_url_prefix => "")
+
+# Sign only with explicit env credentials (the credential chain would error out otherwise);
+# local runs without them send unsigned requests instead
+const _aws_config = Ref{Union{Nothing, AWS.AWSConfig}}(nothing)
+function aws_config()
+    if _aws_config[] === nothing
+        _aws_config[] = if !isempty(get(ENV, "AWS_ACCESS_KEY_ID", ""))
+            AWS.AWSConfig(; region = s3_region)
+        else
+            AWS.AWSConfig(; creds = nothing, region = s3_region)
+        end
+    end
+    return _aws_config[]
+end
+aws_signs() = aws_config().credentials !== nothing
+
+# The objects are public-read, so an auth error on a signed request means the credentials
+# are broken; the caller should fail fast instead of silently degrading every check into
+# keep-existing/skip-transient
+function is_credential_error(ex)
+    return ex isa AWS.AWSException && ex.code in (
+        "AccessDenied", "InvalidAccessKeyId", "SignatureDoesNotMatch",
+        "ExpiredToken", "TokenRefreshRequired",
     )
-    JSON.parse(String(read(tags_json_path)))
+end
+
+# Download `url` to `path`, streaming to disk instead of buffering the file in memory
+function s3_download(url::AbstractString, path::AbstractString)
+    try
+        open(path, "w") do io
+            S3.get_object(s3_bucket, s3_key(url),
+                          Dict("response_stream" => io); aws_config = aws_config())
+        end
+    catch
+        # don't leave a partial file behind
+        rm(path; force = true)
+        rethrow()
+    end
+    return path
 end
 
 # ------------------------------------------------------------------------------------------
 # Incremental rebuilds: seed from the deployed versions.json and only download what's
-# missing. A seeded entry is kept after a HEAD cross-check of its recorded
-# size/etag/last-modified against the live headers. The full-rebuild input in CI.yml
-# re-downloads everything from scratch.
+# missing. A seeded entry is kept after a cross-check of its recorded
+# size/etag/last-modified against the live bucket listing. The full-rebuild input in
+# CI.yml re-downloads everything from scratch.
 
 function load_seed(out_path)
     meta = Dict{VersionNumber, Any}()
@@ -186,15 +238,71 @@ function checkpoint(out_path, meta)
     end
 end
 
+const head_absent = (; status = 0, content_length = nothing, etag = nothing, last_modified = nothing)
+
+# The prefix holding all files of a version: bin/<os>/<arch>/<major.minor>/
+s3_prefix(url::AbstractString) = dirname(s3_key(url)) * "/"
+
+function list_objects(prefix::AbstractString)
+    listing = Dict{String, Any}()
+    params = Dict{String, Any}("prefix" => String(prefix))
+    while true
+        page = try
+            S3.list_objects_v2(s3_bucket, params; aws_config = aws_config())
+        catch ex
+            isa(ex, InterruptException) && rethrow(ex)
+            if aws_signs() && is_credential_error(ex)
+                error("S3 rejected the signed list-objects-v2 request for $(prefix) " *
+                      "($(ex.code)); check the AWS credentials")
+            end
+            # a failed request must not kill the run; nothing = transient, retried next run
+            @warn "list-objects-v2 failed for $(prefix)" exception=(ex,)
+            return nothing
+        end
+        # a prefix with no objects yields no Contents key at all, and the XML parsing
+        # returns a lone Dict instead of a one-element vector for a single object
+        contents = get(page, "Contents", [])
+        contents isa AbstractVector || (contents = [contents])
+        for obj in contents
+            etag = strip(get(obj, "ETag", ""))
+            # etag and last-modified are recorded and compared as opaque strings, exactly
+            # as S3 reports them; nothing = field missing/unparsable
+            last_modified = strip(get(obj, "LastModified", ""))
+            listing[obj["Key"]] = (;
+                content_length = tryparse(Int, get(obj, "Size", "")),
+                etag = isempty(etag) ? nothing : String(etag),
+                last_modified = isempty(last_modified) ? nothing : String(last_modified),
+            )
+        end
+        get(page, "IsTruncated", "false") == "true" || break
+        params["continuation-token"] = page["NextContinuationToken"]
+    end
+    return listing
+end
+
+# Answer "does this URL exist and with what metadata" from the (memoized) listing of its
+# prefix, in the shape a HEAD request would have produced: 200 = exists, 404 = does not
+# exist, 0 = the listing failed so we don't know (transient).
+function object_info(prefix_cache::AbstractDict, url::AbstractString)
+    listing = get!(() -> list_objects(s3_prefix(url)), prefix_cache, s3_prefix(url))
+    listing === nothing && return head_absent
+    info = get(listing, s3_key(url), nothing)
+    info === nothing && return (; head_absent..., status = 404)
+    return (; status = 200, info...)
+end
+
+# Plain HTTP HEAD, same result shape as object_info. Used by the nightlies prober
+# (nightlies.jl), whose URLs live on other buckets (julialangnightlies, julialang-nogpl)
+# and are few enough per run that rate limits are not a concern there.
 function head_url(url)
     response = try
-        # HTTP.jl's default read timeout is infinite; one hung connection would stall the build
-        HTTP.head(url; status_exception = false, connect_timeout = 15, readtimeout = 30, retries = 2)
+        # HTTP.jl's default idle timeout is infinite; one hung connection would stall the build
+        HTTP.head(url; status_exception = false, connect_timeout = 15, read_idle_timeout = 30, retries = 2)
     catch ex
         isa(ex, InterruptException) && rethrow(ex)
         # a failed request (DNS, reset, ...) must not kill the run; status 0 = transient
         @warn "HEAD request failed for $(url)" exception=(ex,)
-        return (; status = 0, content_length = nothing, etag = nothing, last_modified = nothing)
+        return head_absent
     end
     # nothing = header missing/unparsable
     content_length = tryparse(Int, String(strip(HTTP.header(response, "Content-Length"))))
@@ -208,10 +316,10 @@ function head_url(url)
     )
 end
 
-# The CDN is known to serve stale per-POP 404s for files that do exist, so a non-200
-# for a URL already in versions.json keeps the entry rather than dropping a released
-# binary. A 404 for an unknown URL means that version/platform doesn't exist; anything
-# else is transient and retried next run.
+# Existence checks ask the bucket directly, so a 404 is authoritative. Still, never drop
+# a released binary based on a live check alone: a non-200 for a URL already in
+# versions.json keeps the entry. A 404 for an unknown URL means that version/platform
+# doesn't exist; anything else is transient and retried next run.
 function action_for_head_status(status::Integer, have_existing_entry::Bool)
     if status == 200
         return :proceed
@@ -224,16 +332,18 @@ function action_for_head_status(status::Integer, have_existing_entry::Bool)
     end
 end
 
-# A seeded entry is stale if any recorded field disagrees with the live headers.
-# A field the entry doesn't have is skipped (etag/last-modified are being added to old
-# entries incrementally); a header the server didn't send is `nothing` and can't be
-# checked, so that comparison is skipped too.
+# A seeded entry is stale if its recorded size or etag disagrees with the live listing.
+# `last-modified` is recorded but not compared: the etag is a content hash, so it already
+# detects a replaced file, and the timestamp has been recorded in two different formats
+# over time (HTTP-date from the old header-based checks, ISO 8601 from the listing).
+# A field the entry doesn't have is skipped (etag is being added to old entries
+# incrementally); a field the listing didn't report is `nothing` and can't be checked,
+# so that comparison is skipped too.
 function entry_matches_head(file_dict, head; url = "")
     for (field, live) in [("size", head.content_length),
-                          ("etag", head.etag),
-                          ("last-modified", head.last_modified)]
-        # only etag/last-modified can be absent here; the filedict_is_complete check
-        # that runs before this already required size
+                          ("etag", head.etag)]
+        # only etag can be absent here; the filedict_is_complete check that runs before
+        # this already required size
         haskey(file_dict, field) || continue
         live === nothing && continue
         if file_dict[field] != live
@@ -306,6 +416,9 @@ function main(out_path; only_version = nothing)
     number_urls_tried = 0
     number_urls_success = 0
     number_carried_over = 0
+    prefix_cache = Dict{String, Any}()
+    # scratch space for the downloads; each file is deleted again after processing
+    downloads_dir = mktempdir()
     for version in tag_versions
         for platform in release_platforms(version)
             url = download_url(version, platform)
@@ -313,16 +426,16 @@ function main(out_path; only_version = nothing)
             key = list_key(platform)
 
             existing = find_filedict(meta, version, url, key)
-            head = head_url(url)
+            head = object_info(prefix_cache, url)
             action = action_for_head_status(head.status, existing !== nothing)
             if action == :keep_existing
-                @warn "HEAD returned $(head.status) for previously-published $(url); keeping the existing entry"
+                @warn "S3 says previously-published $(url) is gone or unknown (status $(head.status)); keeping the existing entry"
                 number_carried_over += 1
                 continue
             elseif action == :skip_nonexistent
                 continue
             elseif action == :skip_transient
-                @warn "HEAD returned $(head.status) for $(url); skipping it for this run"
+                @warn "the existence of $(url) could not be determined; skipping it for this run"
                 continue
             end
 
@@ -339,7 +452,7 @@ function main(out_path; only_version = nothing)
             local filepath
             try
                 print(stdout, "Downloading $(filename)...")
-                filepath = WebCacheUtilities.download_to_cache(filename, url)
+                filepath = s3_download(url, joinpath(downloads_dir, filename))
             catch ex
                 if isa(ex, InterruptException)
                     rethrow(ex)
@@ -352,29 +465,13 @@ function main(out_path; only_version = nothing)
 
             kind, extension = kind_and_extension(filename)
 
-            tarball_hash_path = hit_file_cache("$(filename).sha256") do tarball_hash_path
-                open(filepath, "r") do io
-                    open(tarball_hash_path, "w") do hash_io
-                        write(hash_io, bytes2hex(sha256(io)))
-                    end
-                end
-            end
-            tarball_hash = String(read(tarball_hash_path))
+            tarball_hash = open(io -> bytes2hex(sha256(io)), filepath)
 
             if extension == "tar.gz" && !(url in tarball_git_tree_hash_skiplist)
-                tarball_git_tree_hashes = Dict{String, String}()
-                tree_hash_path_sha1 = hit_file_cache("$(filename).git-tree-sha1") do tree_hash_path
-                    open(tree_hash_path, "w") do hash_io
-                        write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha1"))
-                    end
-                end
-                tree_hash_path_sha256 = hit_file_cache("$(filename).git-tree-sha256") do tree_hash_path
-                    open(tree_hash_path, "w") do hash_io
-                        write(hash_io, tarball_git_tree_hash(; tarball_path=filepath, algorithm="git-sha256"))
-                    end
-                end
-                tarball_git_tree_hashes["git-tree-sha1"] = String(read(tree_hash_path_sha1))
-                tarball_git_tree_hashes["git-tree-sha256"] = String(read(tree_hash_path_sha256))
+                tarball_git_tree_hashes = Dict{String, String}(
+                    "git-tree-sha1" => tarball_git_tree_hash(; tarball_path = filepath, algorithm = "git-sha1"),
+                    "git-tree-sha256" => tarball_git_tree_hash(; tarball_path = filepath, algorithm = "git-sha256"),
+                )
             else
                 tarball_git_tree_hashes = nothing
             end
@@ -396,8 +493,9 @@ function main(out_path; only_version = nothing)
                 asc_url = string(url, ".asc")
                 print(stdout, "    Downloading $(basename(asc_url))")
                 try
-                    asc_filepath = WebCacheUtilities.download_to_cache(basename(asc_url), asc_url)
+                    asc_filepath = s3_download(asc_url, joinpath(downloads_dir, basename(asc_url)))
                     asc_signature = String(read(asc_filepath))
+                    rm(asc_filepath)
                     println(stdout, " ✓")
                 catch ex
                     if isa(ex, InterruptException)
