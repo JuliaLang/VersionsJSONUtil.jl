@@ -463,10 +463,12 @@ include("nightlies.jl")
 # under julia-buildkite's canonical names rather than the buildbot-era ones, e.g.
 #     bin/linuxopt/x86_64/1.14/julia-1.14.0-linuxopt-x86_64.tar.gz
 
-# The variants releases come with, and the first version that does
+# The variants releases come with, and the first version that does. The assertion build is
+# published for every release branch since the 1.10 LTS (packages like Enzyme test against
+# it), but older releases were tagged before that, so their probes simply 404.
 const release_variants = [
     "opt"    => v"1.14.0-",
-    "assert" => v"1.14.0-",
+    "assert" => v"1.10.0-",
 ]
 
 function download_url(version::VersionNumber, v::Variant)
