@@ -27,7 +27,7 @@ VersionsJSONUtil.jl is the Julia package that generates the `versions.json` file
 > [!WARNING]
 > The `variants` list and its contents are experimental. In the future, they may change in breaking ways (or be removed entirely).
 
-Starting with Julia 1.14, a version may optionally also have a `variants` list next to `files`. The `variants` list contains the list of variant files for that Julia version.
+A version may optionally also have a `variants` list next to `files` (`assert` builds starting with Julia 1.10, the other variants starting with Julia 1.14). The `variants` list contains the list of variant files for that Julia version.
 
 A `variants` entry has the same keys as a `files` entry. Additionally, each entry contains a key named `variants`, which is the list of one or more variant labels for that file.
 
@@ -99,7 +99,7 @@ The following keys are not present: `asc`, `etag`, `git-tree-sha1`, `git-tree-sh
 
 #### 2.3.2. `nightlies.json`: `variants`
 
-Starting with Julia 1.14, a nightly track may optionally also have a `variants` list next to `files`. `variants` in `nightlies.json` works similarly to `variants` in `versions.json`, except that a _nightlies_ `variants` entry has keys similar to a _nightlies_ `files` entry.
+A nightly track may optionally also have a `variants` list next to `files`. `variants` in `nightlies.json` works similarly to `variants` in `versions.json`, except that a _nightlies_ `variants` entry has keys similar to a _nightlies_ `files` entry.
 
 See the `variants` documentation above for full details.
 

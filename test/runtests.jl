@@ -190,7 +190,11 @@ const download_urls = Dict(
         @test download_url(v"1.14.0", Variant(Linux(:x86_64), "assert")) == base * "linuxassert/x86_64/1.14/julia-1.14.0-linuxassert-x86_64.tar.gz"
 
         release_platforms = VersionsJSONUtil.release_platforms
-        @test release_platforms(v"1.13.1") == VersionsJSONUtil.julia_platforms
+        @test release_platforms(v"1.9.4") == VersionsJSONUtil.julia_platforms
+        for v in (v"1.10.0", v"1.13.1")
+            variants = filter(p -> p isa Variant, release_platforms(v))
+            @test Set(p.name for p in variants) == Set(["assert"])
+        end
         for v in (v"1.14.0-alpha1", v"1.14.0", v"2.0.0")
             platforms = release_platforms(v)
             @test platforms[1:length(VersionsJSONUtil.julia_platforms)] == VersionsJSONUtil.julia_platforms
